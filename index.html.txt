@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Adam Metcalf</title>
+</head>
+<body>
+  <h1>Adam Metcalf</h1>
+  <p>Personal site. Content forthcoming.</p>
+</body>
+</html>
