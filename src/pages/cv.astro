@@ -62,7 +62,7 @@ const sortedExperience = [...experience].sort(
                             {job.organisation}
 
                             <span
-                              class="external-link"
+                              class="external-icon"
                               aria-hidden="true"
                             >
                               ↗
@@ -88,9 +88,40 @@ const sortedExperience = [...experience].sort(
                   </div>
                 </header>
 
-                <p class="experience-summary">
-                  {job.summary}
-                </p>
+                <div class="summary">
+                  {
+                    typeof job.summary === "string" ? (
+                      <p>{job.summary}</p>
+                    ) : (
+                      job.summary.map((paragraph) =>
+                        typeof paragraph === "string" ? (
+                          <p>{paragraph}</p>
+                        ) : (
+                          <p>
+                            {paragraph.text}
+
+                            <a
+                              href={paragraph.link.href}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              class="external-link"
+                            >
+                              {paragraph.link.text}
+                              <span
+                                class="external-icon"
+                                aria-hidden="true"
+                              >
+                                ↗
+                              </span>
+                            </a>
+
+                            {paragraph.suffix}
+                          </p>
+                        )
+                      )
+                    )
+                  }
+                </div>
 
                 {
                   jobProjects.length > 0 && (
@@ -213,14 +244,32 @@ const sortedExperience = [...experience].sort(
   }
 
   .external-link {
+    color: #1c1c1c;
+
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.15em;
+  }
+
+  .external-link:visited {
+    color: #1c1c1c;
+  }
+
+  .external-icon {
     display: inline-block;
 
-    margin-left: 0.35rem;
+    margin-left: 0.25rem;
 
     font-size: 0.8em;
     font-weight: 400;
 
+    text-decoration: none;
+
     transition: transform 0.15s ease;
+  }
+
+  a:hover .external-icon {
+    transform: translate(2px, -2px);
   }
 
   .experience-title h3 a:hover .external-link {
