@@ -317,7 +317,7 @@ summary: [
   {
       text: "After my time with the Undergraduate Research and Leadership Scholarship I was awarded the Edward Boyle prize by the ",
       link: {
-        text: "Royal Society for the encouragement of Arts, Manufactures and Commerce",
+        text: "Royal Society of Arts",
         href: "https://www.thersa.org/",
       },
       suffix: ".",

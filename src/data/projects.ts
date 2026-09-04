@@ -139,4 +139,82 @@ export const projects: Project[] = [
       cv: true,
     },
   },
+
+// Tentacle Control
+  {
+    id: "tentacle-control",
+
+    title: "Realtime Control of Magnetically Actuated Soft Continuum Robots (MSCRs) using a hybrid Non-Linear Optimisation/Genetic Algorithm solver to Perform the Inverse Kinematics",
+
+    summary:
+      "MSCRs are difficult to control since there is no closed-form solution for the inverse kinematics. This is because they essentially have infinite degrees of freedom. I solved the Inverse Kinematics in real time using a computationally efficient hybrid algorithm combining the benefits of non-linear optimisation with the benefits of a genetic algorithm.",
+
+    details:
+      "TODO. This too was a very complicated project.",
+
+    tags: [
+      "Soft Robotics",
+      "Control",
+      "Software",
+      "ROS 2",
+      "Magnetic Workspace",
+      "System Integration",
+    ],
+
+    technologies: [
+      "Fibre Bragg grating (FBG)",
+      "Magnetic Coils",
+      "C++",
+      "ROS 2",
+    ],
+
+    experience: [
+      "university-leeds",
+    ],
+
+    display: {
+      projects: true,
+      cv: true,
+    },
+  },
+
+// Heart Scanning
+  {
+    id: "heart-scanning",
+
+    title: "Impedance Controlled Automated Scanning of Complex Tissue Geometries",
+
+    summary:
+      "Impedance Control was used with a Kuka iiwa 14, with a 6-axis load cell and THz scanner at the end effector, to obtain THz scans of complex and delicate tissues. Force feedback was used to align the scanner such that all scans were normal to the tissue surface",
+
+    details:
+      "TODO. This too was a very complicated project.",
+
+    tags: [
+      "THz",
+      "Control",
+      "Software",
+      "ROS 2",
+      "PLC",
+      "Loadcell",
+      "System Integration",
+    ],
+
+    technologies: [
+      "Loadcell",
+      "Python",
+      "Kuka",
+      "C++",
+      "ROS 2",
+    ],
+
+    experience: [
+      "university-leeds",
+    ],
+
+    display: {
+      projects: true,
+      cv: true,
+    },
+  },
 ];
