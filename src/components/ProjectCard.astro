@@ -1,0 +1,255 @@
+---
+import type { Project } from "../data/projects";
+
+interface Props {
+  project: Project;
+}
+
+const { project } = Astro.props;
+---
+
+<details class="project-card">
+  <summary>
+    <div class="project-heading">
+      <div>
+        <h3>{project.title}</h3>
+        <p>{project.summary}</p>
+      </div>
+
+      <span class="expand">+</span>
+    </div>
+  </summary>
+
+  <div class="project-content">
+    <p class="details">
+      {project.details}
+    </p>
+
+    {
+      project.links && project.links.length > 0 && (
+        <div class="project-links">
+          {project.links.map((link) => (
+            <a
+              class="project-link"
+              href={link.url}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {link.label}
+
+              <span
+                class="external-link"
+                aria-hidden="true"
+              >
+                ↗
+              </span>
+            </a>
+          ))}
+        </div>
+      )
+    }
+
+    {
+      project.tags.length > 0 && (
+        <div class="metadata">
+          <span class="metadata-title">Areas</span>
+
+          <div class="items">
+            {
+              project.tags.map((tag) => (
+                <span>{tag}</span>
+              ))
+            }
+          </div>
+        </div>
+      )
+    }
+
+    {
+      project.technologies.length > 0 && (
+        <div class="metadata">
+          <span class="metadata-title">Technologies</span>
+
+          <div class="items">
+            {
+              project.technologies.map((technology) => (
+                <span>{technology}</span>
+              ))
+            }
+          </div>
+        </div>
+      )
+    }
+  </div>
+</details>
+
+<style>
+  .project-card {
+    border-top: 1px solid #ccc;
+  }
+
+  .project-card:last-child {
+    border-bottom: 1px solid #ccc;
+  }
+
+  summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 2rem 0;
+  }
+
+  summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .project-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 2rem;
+  }
+
+  .project-heading h3 {
+    margin: 0 0 0.75rem;
+    font-size: 1.4rem;
+  }
+
+  .project-heading p {
+    margin: 0;
+    max-width: 700px;
+    color: #555;
+    line-height: 1.7;
+  }
+
+  .expand {
+    flex-shrink: 0;
+    font-size: 1.8rem;
+    line-height: 1;
+  }
+
+  details[open] .expand {
+    transform: rotate(45deg);
+  }
+
+  .project-content {
+    padding: 0 0 2.5rem;
+    max-width: 750px;
+  }
+
+  .details {
+    margin: 0 0 2rem;
+    color: #444;
+    line-height: 1.8;
+  }
+
+  .project-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.25rem;
+    margin: -0.5rem 0 2rem;
+  }
+
+  .project-link {
+    color: #1c1c1c;
+    font-size: 0.95rem;
+    font-weight: 500;
+    text-decoration: none;
+  }
+
+  .project-link:visited {
+    color: #1c1c1c;
+  }
+
+  .external-link {
+    display: inline-block;
+    margin-left: 0.35rem;
+    font-size: 0.8em;
+    font-weight: 400;
+    transition: transform 0.15s ease;
+  }
+
+  .project-link:hover .external-link {
+    transform: translate(2px, -2px);
+  }
+
+  .metadata {
+    margin-top: 1.5rem;
+  }
+
+  .metadata-title {
+    display: block;
+    margin-bottom: 0.7rem;
+    color: #777;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .items span {
+    border: 1px solid #ccc;
+    border-radius: 100px;
+    padding: 0.35rem 0.75rem;
+    color: #444;
+    font-size: 0.85rem;
+  }
+
+.project-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.75rem;
+
+  margin: -0.5rem 0 2rem;
+}
+
+.project-link {
+  display: inline-flex;
+  align-items: baseline;
+
+  color: #1c1c1c;
+
+  font-size: 0.95rem;
+  font-weight: 500;
+
+  text-decoration: none;
+}
+
+.project-link:visited {
+  color: #1c1c1c;
+}
+
+.project-link:hover {
+  text-decoration: underline;
+}
+
+.external-link {
+  display: inline-block;
+
+  margin-left: 0.35rem;
+
+  font-size: 0.8em;
+  font-weight: 400;
+
+  transition: transform 0.15s ease;
+}
+
+.project-link:hover .external-link {
+  transform: translate(2px, -2px);
+}
+
+  @media (max-width: 700px) {
+    summary {
+      padding: 1.5rem 0;
+    }
+
+    .project-heading {
+      gap: 1rem;
+    }
+  }
+</style>

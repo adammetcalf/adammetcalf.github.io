@@ -1,0 +1,82 @@
+---
+import Layout from "../layouts/Layout.astro";
+import ProjectCard from "../components/ProjectCard.astro";
+
+import { projects } from "../data/projects";
+
+const visibleProjects = projects.filter(
+  (project) => project.display.projects
+);
+---
+
+<Layout
+  title="Projects | Adam Metcalf"
+  description="Engineering, robotics, software, electronics and research projects by Adam Metcalf."
+>
+  <main>
+    <header class="projects-header">
+      <h1>Projects</h1>
+
+      <p>
+        Selected engineering, robotics, software, electronics and research
+        projects spanning professional, academic and personal work.
+      </p>
+    </header>
+
+    <section class="project-list">
+      {
+        visibleProjects.map((project) => (
+          <ProjectCard project={project} />
+        ))
+      }
+    </section>
+  </main>
+</Layout>
+
+<style>
+  main {
+    width: min(1100px, calc(100% - 3rem));
+    margin: auto;
+  }
+
+  .projects-header {
+    padding: 7rem 0 6rem;
+    max-width: 800px;
+  }
+
+  .projects-header h1 {
+    margin: 0 0 1.5rem;
+
+    font-size: clamp(3.5rem, 9vw, 7rem);
+    line-height: 0.95;
+    letter-spacing: -0.05em;
+  }
+
+  .projects-header p {
+    margin: 0;
+    max-width: 700px;
+
+    color: #555;
+
+    font-size: 1.2rem;
+    line-height: 1.7;
+  }
+
+  .project-list {
+    padding-bottom: 8rem;
+
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  @media (max-width: 700px) {
+    .projects-header {
+      padding: 5rem 0 4rem;
+    }
+
+    .project-list {
+      padding-bottom: 5rem;
+    }
+  }
+</style>
