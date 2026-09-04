@@ -34,8 +34,17 @@ export const experience: Experience[] = [
 
     type: "Employment",
 
-    summary:
+    summary: [
       "Delivery of multidisciplinary engineering projects spanning software, automation, instrumentation, electronics and system integration.",
+  
+      "Contract R&D across a range of projects, spanning medical device development, AI, machine vision, electronics and PCB design, simulation, hardware integration, testing and validation. Software architecture and development in C++, Python and LabVIEW, covering embedded systems through to networked applications and database integration.",
+
+      "Brought the company up from little source code control to a full Continous Integration and Continuous Deployment (CI/CD) pipeline for automated test and deployment of developed software.",
+
+      "Led the deployment of software security testing to meet the EU Cyber Resilience Act legislation.",
+
+      "Modelling and Control of complex coupled systems.",
+    ],
   },
 
   {
@@ -48,12 +57,22 @@ export const experience: Experience[] = [
     startDate: "Dec 2023",
     endDate: "Dec 2025",
 
-    type: "Education",
+    type: "Employment",
 
     website: "https://stormlabuk.com/",
 
-    summary:
-      "Research and development of robotic systems for surgical applications, including robot control, mechatronics, experimental systems and software integration.",
+    summary: [
+    "Upgraded the dual-arm Kuka iiwa platform (Composed of 2 Kuka iiwa 14 robots in a shared robotic workspace) from ROS1 to a ROS2 interface, overcoming the unique challenges presented by Kuka’s closed ecosystem. The robots were fitted with large magnets at their end-effectors, creating a complex magnetic workspace which was used to manipulate Magnetically Actuated Soft Continuum Robots (MSCRs).",
+
+    "Developed path planning and control algorithms for the dual-arm Kuka platform, considering the field and gradient effects of the large magnets at the end effectors to precisely manipulate shape and position of MSCRs for minimally invasive surgery applications.",
+
+    "Led path planning and control efforts for a single-arm Kuka iiwa robot, integrating bespoke toolchains at the end effector, including an ultra-precise 6-DoF hexapod and a combination of 6-axis loadcell/THz sensing chip array for impedance controlled soft surface scanning.",
+
+    "Designed and fabricated doped silicone phantoms for characterisation and validation of THz scanning technology for use in a medical context. Samples ranged in scale from a forearm representative sample comprised of multiple layers of different materials and thicknesses representing all major tissue components to sub millimeter patterned samples used in ultra high resolution scanning.",
+
+    "Supervised MSc students through their Electronic Engineering professional projects, worth 50% of their grade.",
+
+    ],
   },
 
   {
@@ -68,10 +87,19 @@ export const experience: Experience[] = [
 
     type: "Employment",
 
-    summary:
-      "Delivery of multidisciplinary engineering projects spanning software, automation, instrumentation, electronics and system integration.",
+    summary: [
+    "Designed, built, installed, programmed, and validated bespoke Automated Test Equipment (ATE) systems and process control platforms for customers in the nuclear, manufacturing, medical device, chemical and rail industries. Delivered projects end-to-end, from initial requirements gathering through to Factory Acceptance Test (FAT) and Site Acceptance Test (SAT)",
+
+    "Developed low-level drivers in LabVIEW and C++ to control and acquire from a variety of hardware. Examples include stepper motor drives, GigE cameras, fluid control assemblies, and pneumatic assemblies.",
+
+    "Developed code to communicate with a wide range of hardware using standard protocols (I2C, SPI, TCP, UDP, UART, Modbus, OPC) as well as bespoke serial across RS232.",
+
+    "Designed and implemented automated test frameworks including sequencing engines, operator interfaces, results logging, and PLC integration. Development was primarily in LabVIEW and C++, with Beckhoff PLC control implemented in TwinCAT 3 using Structured Text (ST)",
+
+    ],
   },
 
+// Farnell
   {
     id: "Farnell",
 
@@ -84,10 +112,15 @@ export const experience: Experience[] = [
 
     type: "Employment",
 
-    summary:
-      "Delivery of multidisciplinary engineering projects spanning software, automation, instrumentation, electronics and system integration.",
+    summary: [
+    "Specified National Instruments data acquisition and control systems to customer requirements, taking into consideration any need to interface with 3rd party hardware and software. This was a difficult operating environment due to the global chip shortages caused by the Covid 19 Pandemic, requiring a dynamic and flexible approach in order to meet customer specifications.",
+
+    "Recommending hardware to customers seeking replacements for obsolete systems.",
+
+    ],
   },
 
+// PhD
   {
     id: "phd-research",
 
@@ -102,10 +135,16 @@ export const experience: Experience[] = [
 
     website: "https://www.rehab45.com//",
 
-    summary:
-      "Delivery of multidisciplinary engineering projects spanning software, automation, instrumentation, electronics and system integration.",
+    summary: [
+    "My research involved designing and implementing a force-responsive low-level control scheme for an assistive robot aimed at aiding the rehabilitation of stroke patients.",
+
+    "I taught on the Design and Manufacture, Vibration and Control, and Computers in Engineering modules at the University of Leeds and at the overseas sister school at Southwest Jiaotong University in China.",
+
+    "I redesigned experiments for the Vibration and Control module to work with lower-cost hardware. Additionally, I developed new experiments for the Computers in Engineering module during the transition from expensive National Instruments (NI) hardware to more affordable Arduino hardware.",
+    ],
   },
 
+  // Internship Uni Leeds
   {
     id: "Engineering-Intern",
 
@@ -119,7 +158,7 @@ export const experience: Experience[] = [
     type: "Employment",
 
     summary:
-      "Delivery of multidisciplinary engineering projects spanning software, automation, instrumentation, electronics and system integration.",
+      "I rewrote and modernised module components for the Computers in Engineering Module taught to 1st year undergraduate students.",
   },
 
   // Part time LabVIEW Developer at Control Software Solutions Ltd - 2017-2018
