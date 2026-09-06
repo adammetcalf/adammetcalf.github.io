@@ -13,7 +13,7 @@ const { project } = Astro.props;
     <div class="project-heading">
       <div>
         <h3>{project.title}</h3>
-        <p>{project.summary}</p>
+        <p class="project-summary">{project.summary}</p>
       </div>
 
       <span class="expand">+</span>
@@ -40,6 +40,24 @@ const { project } = Astro.props;
                   alt={block.alt}
                   loading="lazy"
                 />
+
+                {
+                  block.caption && (
+                    <figcaption>
+                      {block.caption}
+                    </figcaption>
+                  )
+                }
+              </figure>
+            );
+          }
+
+          if (block.type === "mermaid") {
+            return (
+              <figure class="project-mermaid">
+                <pre class="mermaid">
+                  {block.content}
+                </pre>
 
                 {
                   block.caption && (
@@ -115,6 +133,33 @@ const { project } = Astro.props;
   </div>
 </details>
 
+<script>
+  import mermaid from "mermaid";
+
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: "neutral",
+  });
+
+  async function renderMermaid() {
+    await mermaid.run({
+      querySelector: ".mermaid",
+    });
+  }
+
+  renderMermaid();
+
+  document
+    .querySelectorAll<HTMLDetailsElement>("details.project-card")
+    .forEach((details) => {
+      details.addEventListener("toggle", () => {
+        if (details.open) {
+          renderMermaid();
+        }
+      });
+    });
+</script>
+
 <style>
   .project-card {
     border-top: 1px solid #d8d8d8;
@@ -137,6 +182,10 @@ const { project } = Astro.props;
 
   summary::-webkit-details-marker {
     display: none;
+  }
+
+  .project-summary {
+    font-weight: 700;
   }
 
   .project-heading {
@@ -218,6 +267,30 @@ const { project } = Astro.props;
   }
 
   .project-image figcaption {
+    margin-top: 0.6rem;
+
+    color: #777;
+
+    font-size: 0.85rem;
+    line-height: 1.5;
+  }
+
+  .project-mermaid {
+    margin: 2rem 0;
+  }
+
+  .project-mermaid .mermaid {
+    overflow-x: auto;
+
+    padding: 1.5rem;
+
+    background: #fff;
+
+    border: 1px solid #ddd;
+    border-radius: 4px;
+  }
+
+  .project-mermaid figcaption {
     margin-top: 0.6rem;
 
     color: #777;
@@ -339,6 +412,14 @@ const { project } = Astro.props;
 
     .project-image {
       margin: 1.5rem 0;
+    }
+
+    .project-mermaid {
+      margin: 1.5rem 0;
+    }
+
+    .project-mermaid .mermaid {
+      padding: 1rem;
     }
   }
 </style>
