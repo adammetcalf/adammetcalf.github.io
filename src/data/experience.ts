@@ -262,7 +262,7 @@ export const experience: Experience[] = [
 
     organisation: "Rhondda Cynon Taff Council",
 
-    role: "Heavy Goods Vehicle Mechnanic - Temporary Contract",
+    role: "Heavy Goods Vehicle Mechanic - Temporary Contract",
 
     startDate: "Apr 2013",
     endDate: "Jun 2014",

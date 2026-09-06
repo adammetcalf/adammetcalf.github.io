@@ -10,9 +10,16 @@ export interface ProjectImageBlock {
   caption?: string;
 }
 
+export interface ProjectMermaidBlock {
+  type: "mermaid";
+  content: string;
+  caption?: string;
+}
+
 export type ProjectContentBlock =
   | ProjectTextBlock
-  | ProjectImageBlock;
+  | ProjectImageBlock
+  | ProjectMermaidBlock;
 
 export interface Project {
   id: string;
@@ -103,9 +110,51 @@ export const projects: Project[] = [
     },
   },
 
-  // CSS ATE for Parker
+  // KEY Boiler control
   {
-    id: "ASML",
+    id: "Boiler",
+
+    title:
+      "Modelling, System Identification and Control of a Boiler Heating System",
+
+    summary:
+      "Working on contract for a UK based boiler manufacturer, I successfully decoupled a Multi-Input Multi-Output (MIMO) system into two Single-Input Single-Output (SISO) systems to allow for full automation in their R&D process.",
+
+    details: [
+      {
+        type: "text",
+        content:
+          "TODO. This was a very complicated project.",
+      },
+    ],
+
+    tags: [
+      "Software",
+      "Modelling",
+      "Control",
+      "Automation",
+      "State Space",
+    ],
+
+    technologies: [
+      "TestStand",
+      "Python",
+      "LabVIEW",
+    ],
+
+    experience: [
+      "Key Engineering Solutions",
+    ],
+
+    display: {
+      projects: true,
+      cv: true,
+    },
+  },
+
+  // CSS vacuum Calibration
+  {
+    id: "Vacuum_Calib",
 
     title:
       "End of Line Calibration and Test System for Vacuum Mounts Used in Wafer Lithography",
@@ -117,7 +166,13 @@ export const projects: Project[] = [
       {
         type: "text",
         content:
-          "TODO. This was a very complicated project.",
+          "I inherited this project from a previous engineer who had left the company. The test system was a complex mechatronic device comprising a vacumm/pneumatic system, a vision system, motor drives and a 3-axis gantry used to introduce a rotating tool to potentiometers on the Device Under Test (DUT), a PLC and a control PC. The point at which I inhereted this project is when it was returned from the customer site for failing the Site Acceptance Test (SAT), having experienced a fire when testing the motor drives. There had not been a Factory Acceptance Test (FAT) performed on the system before it was shipped to the customer.",
+      },
+
+            {
+        type: "text",
+        content:
+          "There was not a single part of the system or subsystem that did not require a comprehensive overhaul. The vision system was not able to focus on the potentiometers because it had been specified with the wrong lens. Furthermore, the network switch (100Mbs) was inappropriate for the GigE camera. The control software was incomplete. The test sequencing engine was unfinished and untested. The PLC software was incomplete. The hardware build had been subcontracted to another company, and the PLC wiring/connections were undocumented, messy, unproffesional and incorrect. The vacuum/pneumatic assembly was untested and unactuatable because of the issues with the PLC code and wiring. Finally, the motor drives had been damaged and were not responsive. To compound these issues, the project was already overbudget and late.",
       },
     ],
 
@@ -155,7 +210,7 @@ export const projects: Project[] = [
     id: "Mermaid_Auto",
 
     title:
-      "Automatically Generated LabVIEW Class and Inheritence Generator from Mermaid Diagrams",
+      "Automatic LabVIEW Class and Inheritence Generator from Mermaid Diagrams",
 
     summary:
       "I have created an open source tool that automatically generates LabVIEW classes and establishes inheretence relationships between them based on Mermaid diagrams. This tool allows developers to visually design their class structures using Mermaid syntax, and then automatically generate the corresponding LabVIEW code, saving time and reducing errors in the development process.",
@@ -164,7 +219,29 @@ export const projects: Project[] = [
       {
         type: "text",
         content:
-          "TODO. This was a very complicated project.",
+          "The tool converts Mermaid class diagrams into LabVIEW class structures.",
+      },
+      {
+        type: "mermaid",
+        content: `
+        classDiagram
+        Animal <|-- Dog
+        Animal <|-- Cat
+
+        class Animal {
+            +String name
+            +speak()
+        }
+
+        class Dog {
+            +bark()
+        }
+
+        class Cat {
+            +meow()
+        }
+        `,
+        caption: "Example class hierarchy.",
       },
     ],
 
@@ -250,13 +327,19 @@ export const projects: Project[] = [
       "Realtime Control of Magnetically Actuated Soft Continuum Robots (MSCRs) using a hybrid Non-Linear Optimisation/Genetic Algorithm solver to Perform the Inverse Kinematics",
 
     summary:
-      "MSCRs are difficult to control since there is no closed-form solution for the inverse kinematics. This is because they essentially have infinite degrees of freedom. I solved the Inverse Kinematics in real time using a computationally efficient hybrid algorithm combining the benefits of non-linear optimisation with the benefits of a genetic algorithm.",
+      "Magnetically Actuated Soft Continuum Robots (MSCRs) are difficult to control since there is no closed-form solution for the inverse kinematics. This is because they essentially have infinite degrees of freedom. I solved the Inverse Kinematics in real time using a computationally efficient hybrid algorithm combining the benefits of non-linear optimisation with the benefits of a genetic algorithm.",
 
     details: [
       {
         type: "text",
         content:
-          "TODO. This too was a very complicated project.",
+          "MSCRs, developed by STORM lab at the University of Leeds, are soft robots that can be actuated using magnetic fields and field gradients. They are fabricated by vacuum mixing silicone with strong magnetic particles (NdFeB) and then curing the mixture in a 3D printed mould. The resulting soft robot is then directionally magnetised and can be actuated by applying magnetic fields and field gradients. The soft robots are used for a variety of applications, including minimally invasive surgery, drug delivery, and soft robotics research.",
+      },
+
+     {
+        type: "text",
+        content:
+          "However, the MSCRs are challenging to control due to their complex dynamics and the lack of a closed-form inverse kinematics solution. Furthermore, in the context of endoluminal applications in minimily invasive surgery, positional feedback is challenging. The difficulty in locating the MSCRs using tradionall mechanisms such as Ultrasound make localisation and therefore automating the path planning and control of the MSCRs very difficult.",
       },
     ],
 
