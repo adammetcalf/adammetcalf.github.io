@@ -169,10 +169,32 @@ export const projects: Project[] = [
           "I inherited this project from a previous engineer who had left the company. The test system was a complex mechatronic device comprising a vacumm/pneumatic system, a vision system, motor drives and a 3-axis gantry used to introduce a rotating tool to potentiometers on the Device Under Test (DUT), a PLC and a control PC. The point at which I inhereted this project is when it was returned from the customer site for failing the Site Acceptance Test (SAT), having experienced a fire when testing the motor drives. There had not been a Factory Acceptance Test (FAT) performed on the system before it was shipped to the customer.",
       },
 
-            {
+      {
         type: "text",
         content:
           "There was not a single part of the system or subsystem that did not require a comprehensive overhaul. The vision system was not able to focus on the potentiometers because it had been specified with the wrong lens. Furthermore, the network switch (100Mbs) was inappropriate for the GigE camera. The control software was incomplete. The test sequencing engine was unfinished and untested. The PLC software was incomplete. The hardware build had been subcontracted to another company, and the PLC wiring/connections were undocumented, messy, unproffesional and incorrect. The vacuum/pneumatic assembly was untested and unactuatable because of the issues with the PLC code and wiring. Finally, the motor drives had been damaged and were not responsive. To compound these issues, the project was already overbudget and late.",
+      },
+
+      {
+        type: "text",
+        content:
+          "A lot of the work was done in parallel, with project dependencies informing each other as the refactor developed. As such, whilst an attempt has been made to present this somewhat chronologically, it is not entirely accurate. One of the first key milestones was I/O mapping, rewiring the PLC connections and tidying up the connections. Note that a wiring diagram was produced and all wires were tagged.",
+      },
+
+      {
+        type: "image",
+        src: "/images/projects/VacuumWafer/PLC_Old.png",
+        alt: "PLC Cabinet Before Remampping and Rewiring",
+        caption:
+          "PLC Cabinet Before Remampping and Rewiring.",
+      },
+
+      {
+        type: "image",
+        src: "/images/projects/VacuumWafer/PLC_New.png",
+        alt: "PLC Cabinet After Remampping and Rewiring",
+        caption:
+          "PLC Cabinet After Remampping and Rewiring.",
       },
     ],
 
@@ -180,6 +202,7 @@ export const projects: Project[] = [
       "Robotics",
       "Machine Vision",
       "Control",
+      "Motor Control",
       "Software",
       "PLC",
       "Automation",
@@ -450,6 +473,52 @@ export const projects: Project[] = [
       "Hexapod (Solano by Symmetrie)",
       "TCP/IP",
       "Python",
+      "C++",
+      "ROS 2",
+    ],
+
+    experience: [
+      "university-leeds",
+    ],
+
+    display: {
+      projects: true,
+      cv: true,
+    },
+  },
+
+  // Hexapod Scanning
+  {
+    id: "kuka upgrade",
+
+    title:
+      "Kuka iiwa Platform Upgrade for ROS2 Compatibility.",
+
+    summary:
+      "A package of software was written and deployed to allow both the Dual Platform or an individual Kuka to be accessible on a ROS2 network. Previously, the Lab had been constrained to using ROS1 due to reliance on an open source ROS1Java library.",
+
+    details: [
+      {
+        type: "text",
+        content:
+          "TODO. This too was a very complicated project.",
+      },
+    ],
+
+    tags: [
+      "Control",
+      "Software",
+      "ROS 2",
+      "Robotics",
+      "System Integration",
+      "Automation",
+    ],
+
+    technologies: [
+      "Kuka iiwa",
+      "TCP/IP",
+      "Java",
+      "Kuka Sunrise Workbench",
       "C++",
       "ROS 2",
     ],
