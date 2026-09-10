@@ -160,41 +160,63 @@ export const projects: Project[] = [
       "End of Line Calibration and Test System for Vacuum Mounts Used in Wafer Lithography",
 
     summary:
-      "This test system calibrates and tests vacuum mounts used for mounting wafers during lithographic fabrication.",
+      "This Automated Test Equipment (ATE) calibrates and tests vacuum mounts used for mounting wafers during lithographic fabrication.",
 
     details: [
       {
         type: "text",
         content:
-          "I inherited this project from a previous engineer who had left the company. The test system was a complex mechatronic device comprising a vacumm/pneumatic system, a vision system, motor drives and a 3-axis gantry used to introduce a rotating tool to potentiometers on the Device Under Test (DUT), a PLC and a control PC. The point at which I inhereted this project is when it was returned from the customer site for failing the Site Acceptance Test (SAT), having experienced a fire when testing the motor drives. There had not been a Factory Acceptance Test (FAT) performed on the system before it was shipped to the customer.",
+          "I inherited this project from a previous engineer who had left the company. The ATE was a complex mechatronic device comprising a vacumm/pneumatic system, a vision system, motor drives and a 3-axis gantry used to introduce a rotating tool to potentiometers on the Device Under Test (DUT), a PLC and a control PC and was designed to be run in a cleanroom. The point at which I inherited this project is when it was returned from the customer site for failing the Site Acceptance Test (SAT), having experienced a fire when testing the motor drives. There had not been a Factory Acceptance Test (FAT) performed on the system before it was shipped to the customer.",
       },
 
       {
         type: "text",
         content:
-          "There was not a single part of the system or subsystem that did not require a comprehensive overhaul. The vision system was not able to focus on the potentiometers because it had been specified with the wrong lens. Furthermore, the network switch (100Mbs) was inappropriate for the GigE camera. The control software was incomplete. The test sequencing engine was unfinished and untested. The PLC software was incomplete. The hardware build had been subcontracted to another company, and the PLC wiring/connections were undocumented, messy, unproffesional and incorrect. The vacuum/pneumatic assembly was untested and unactuatable because of the issues with the PLC code and wiring. Finally, the motor drives had been damaged and were not responsive. To compound these issues, the project was already overbudget and late.",
+          "Each DUT required calibration, incorporating four vacuum/pressure ports, three potentiometers for voltage calibration across different pneumatic stages, and a serial connection for internal state feedback",
+      },
+
+// Add DUT Image
+
+      {
+        type: "text",
+        content:
+          "On taking ownership of the project, I identified significant deficiencies across virtually every system and subsystem, requiring a comprehensive technical overhaul. The subcontracted electrical build was incomplete, with no wiring diagrams or wire labelling, incorrect PLC connections, ground loops, and conductors of insufficient gauge for the required current. The PLC software and hardware integration were also incomplete. The control software lacked defined test sequences and failed to communicate reliably with much of the system I/O, while the test sequencing engine remained unfinished and untested. The vision system had been specified with an incorrect lens, preventing the GigE camera from focusing adequately on the potentiometers under test, and the camera was connected through an unsuitable 100 Mb/s network switch rather than the required 1 Gb/s infrastructure. The associated vision software was unfinished and untested. Mechanically, the specification demanded gantry positioning tolerances of approximately 10 µm without adequately accounting for tooling concentricity and other sources of mechanical error. The vacuum/pressure systems were untested and their control logic incomplete. In addition, communications between the PLC and external control PC contained a memory leak that compromised long-duration system stability. As a result, substantial redesign, completion, integration and validation were required across the electrical, mechanical, pneumatic, vision and software domains before the system could operate as a reliable automated test platform.",
       },
 
       {
         type: "text",
         content:
-          "A lot of the work was done in parallel, with project dependencies informing each other as the refactor developed. As such, whilst an attempt has been made to present this somewhat chronologically, it is not entirely accurate. One of the first key milestones was I/O mapping, rewiring the PLC connections and tidying up the connections. Note that a wiring diagram was produced and all wires were tagged.",
+          "The ATE required an almost complete re-engineering effort, but without the benefit of the originally agreed timescales or project budget. A lot of the work was done in parallel, with project dependencies informing each other as the refactor developed. As such, whilst an attempt has been made to present this somewhat chronologically, it is not entirely accurate. One of the first key milestones was I/O mapping, rewiring the PLC connections and tidying up the connections. Note that a wiring diagram was produced and all wires were tagged.",
       },
 
       {
         type: "image",
         src: "/images/projects/VacuumWafer/PLC_Old.png",
-        alt: "PLC Cabinet Before Remampping and Rewiring",
+        alt: "PLC Cabinet Before Remapping and Rewiring",
         caption:
-          "PLC Cabinet Before Remampping and Rewiring.",
+          "PLC Cabinet Before Remapping and Rewiring.",
       },
 
       {
         type: "image",
         src: "/images/projects/VacuumWafer/PLC_New.png",
-        alt: "PLC Cabinet After Remampping and Rewiring",
+        alt: "PLC Cabinet After Remapping and Rewiring",
         caption:
-          "PLC Cabinet After Remampping and Rewiring.",
+          "PLC Cabinet After Remapping and Rewiring.",
+      },
+
+      {
+        type: "text",
+        content:
+          "I eliminated the communication problems and memory leak between the PLC and the external control PC by rewriting the software interfaces, which was validated with robust multi-day testing whilst I worked on other subsystems. To enable the camera to focus on its target I designed a new camera mount (at a different height) and had it fabricated, which was both faster and cheaper than sourcing a new lens. I then developed the vision software. Image acquisition was written in C++, while a machine-learning vision module written in LabVIEW evaluated the location and orientation of each potentiometer, with the output being gantry x–y target coordinates and the required tool rotation angle.",
+      },
+
+      // Add in some sort of image here
+
+      {
+        type: "text",
+        content:
+          "ool concentricity was also an issue, so I designed a new tool mount which used a guiding flange to guarantee reliable engagement with the potentiometers, using the principles of embodied intelligence. In retrospect, this would have enabled the use of a much cheaper gantry system with a less precise tolerance.",
       },
     ],
 
@@ -216,6 +238,7 @@ export const projects: Project[] = [
       "C++",
       "Python",
       "LabVIEW",
+      "IDS GigE Camera"
     ],
 
     experience: [
