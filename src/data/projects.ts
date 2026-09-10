@@ -216,7 +216,7 @@ export const projects: Project[] = [
       {
         type: "text",
         content:
-          "ool concentricity was also an issue, so I designed a new tool mount which used a guiding flange to guarantee reliable engagement with the potentiometers, using the principles of embodied intelligence. In retrospect, this would have enabled the use of a much cheaper gantry system with a less precise tolerance.",
+          "Tool concentricity was also an issue, so I designed a new tool mount which used a guiding flange to guarantee reliable engagement with the potentiometers, using the principles of embodied intelligence. In retrospect, this would have enabled the use of a much cheaper gantry system with a less precise tolerance.",
       },
     ],
 
@@ -270,22 +270,37 @@ export const projects: Project[] = [
       {
         type: "mermaid",
         content: `
+        ---
+        title: Animal example
+        ---
         classDiagram
-        Animal <|-- Dog
-        Animal <|-- Cat
-
-        class Animal {
-            +String name
-            +speak()
-        }
-
-        class Dog {
-            +bark()
-        }
-
-        class Cat {
-            +meow()
-        }
+            class iAnimal{
+                +isMammal()
+                +mate()
+            }
+            class Animal{
+                +int age
+                +String gender
+                +isMammal()
+                +mate()
+            }
+            class Duck{
+                +String beakColor
+                +swim()
+                +quack()
+            }
+            class Fish{
+                -int sizeInFeet
+                -canEat()
+            }
+            class Zebra{
+                +bool is_wild
+                +run()
+            }
+            iAnimal <|-- Animal
+            Animal <|-- Duck
+            Animal <|-- Fish
+            Animal <|-- Zebra
         `,
         caption: "Example class hierarchy.",
       },
