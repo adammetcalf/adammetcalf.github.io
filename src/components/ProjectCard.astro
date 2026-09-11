@@ -55,9 +55,26 @@ const { project } = Astro.props;
           if (block.type === "mermaid") {
             return (
               <figure class="project-mermaid">
-                <pre class="mermaid">
+                <div class="mermaid">
                   {block.content}
-                </pre>
+                </div>
+
+                <details class="mermaid-source">
+                  <summary class="uml-source-link">
+                    View UML source
+
+                    <span
+                      class="external-link"
+                      aria-hidden="true"
+                    >
+                      ↗
+                    </span>
+                  </summary>
+
+                  <pre>
+                    <code>{block.content.trim()}</code>
+                  </pre>
+                </details>
 
                 {
                   block.caption && (
@@ -290,6 +307,60 @@ const { project } = Astro.props;
     border-radius: 4px;
   }
 
+  .mermaid-source {
+    margin-top: 0.8rem;
+  }
+
+  .uml-source-link {
+    display: inline-flex;
+    align-items: baseline;
+
+    padding: 0;
+
+    color: #1c1c1c;
+
+    font-size: 0.95rem;
+    font-weight: 500;
+
+    list-style: none;
+    cursor: pointer;
+  }
+
+  .uml-source-link::-webkit-details-marker {
+    display: none;
+  }
+
+  .uml-source-link:hover {
+    text-decoration: underline;
+  }
+
+  .uml-source-link:hover .external-link {
+    transform: translate(2px, -2px);
+  }
+
+  .mermaid-source pre {
+    margin: 1rem 0 0;
+
+    padding: 1rem;
+
+    overflow-x: auto;
+
+    background: #fff;
+
+    border: 1px solid #ddd;
+    border-radius: 4px;
+
+    color: #333;
+
+    font-family: monospace;
+    font-size: 0.9rem;
+    line-height: 1.5;
+  }
+
+  .mermaid-source code {
+    white-space: pre;
+  }
+
   .project-mermaid figcaption {
     margin-top: 0.6rem;
 
@@ -390,6 +461,10 @@ const { project } = Astro.props;
       padding: 1.5rem 0;
     }
 
+    .uml-source-link {
+      padding: 0;
+    }
+
     .project-heading {
       gap: 1rem;
     }
@@ -420,6 +495,12 @@ const { project } = Astro.props;
 
     .project-mermaid .mermaid {
       padding: 1rem;
+    }
+
+    .mermaid-source pre {
+      padding: 0.8rem;
+
+      font-size: 0.8rem;
     }
   }
 </style>
