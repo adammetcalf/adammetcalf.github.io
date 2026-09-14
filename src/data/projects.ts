@@ -10,6 +10,12 @@ export interface ProjectImageBlock {
   caption?: string;
 }
 
+export interface ProjectVideoBlock {
+  type: "video";
+  youtubeId: string;
+  caption?: string;
+}
+
 export interface ProjectMermaidBlock {
   type: "mermaid";
   content: string;
@@ -19,6 +25,7 @@ export interface ProjectMermaidBlock {
 export type ProjectContentBlock =
   | ProjectTextBlock
   | ProjectImageBlock
+  | ProjectVideoBlock
   | ProjectMermaidBlock;
 
 export interface Project {
@@ -521,6 +528,15 @@ export const projects: Project[] = [
         content:
           "TODO. This too was a very complicated project.",
       },
+
+      // Youtube link: https://youtu.be/oPk0Btie5iU
+      {
+        type: "video",
+        youtubeId: "oPk0Btie5iU",
+        caption:
+          "Left: Tip control. Right: Base Control.",
+      },
+
     ],
 
     tags: [
