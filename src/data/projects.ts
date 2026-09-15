@@ -526,7 +526,13 @@ export const projects: Project[] = [
       {
         type: "text",
         content:
-          "TODO. This too was a very complicated project.",
+          "The novel Thz sensor consisted of a single chip, but the surface was unprotected and incredibly delicate. Normally, to validate the response of the chip test samples of known THz response are introduced to the sensing area and the response measured and compared against the expected response. One of the most common samples used for this is Gallium Arsenide (GaAs), but unfortunately this is very toxic and also a very hard crystal, which would almost certainly destroy the surface of the sensor when introduced. I worked with my colleagues in the THz lab to introduce samples to validate the response of the sensor.",
+      },
+
+      {
+        type: "text",
+        content:
+          "The first attempt used 3D printed samples (Form 3 - V3 Grey Resin), which had been characterised for their response attched to an ultra precise Hexapod (Solano, by Symmetrie). The samples were characterised for their THz properties by the THz group. The key requirement for the test procedure was to introduce the samples to within a range of 2-5 um of the sensing area, but not to achieve contact to protect the chip surface.",
       },
 
       // Youtube link: https://youtu.be/oPk0Btie5iU
