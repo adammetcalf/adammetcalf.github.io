@@ -372,36 +372,67 @@ export const projects: Project[] = [
 
   // Programming Station for Tunstall
   {
-    id: "ASML",
+    id: "ProgrammingStation",
 
     title:
-      "Emergency software update for a Bed of Nails programming station used in the assembly line production of telehealthcare devices.",
+      "Emergency software replacement for a Bed of Nails programming station used in the assembly-line production of telehealthcare devices.",
 
     summary:
-      "The customer urgently needed a software rewrite for a programming station used at the end of an assembly line. The programminng station used legacy software running on a Windows XP machine. The customer needed the software rewritten to run on a modern Windows 10 machine as an emerggency measure because the Windows XP machine had died.",
+      "The customer urgently required a complete software replacement for a production programming station operating at the end of an assembly line. The station relied on legacy software running on a Windows XP machine which had suffered a terminal hardware failure, immediately preventing further production. With no viable replacement for the original system, the software had to be rapidly recreated and migrated onto a modern Windows 10 platform so that manufacturing could resume.",
 
     details: [
       {
         type: "text",
         content:
-          "TODO. This was a very complicated project.",
+          "This project was delivered under significantly different constraints to a typical engineering development. The programming station was production-critical, the customer had already fallen behind schedule, and the outage was costing hundreds of pounds per hour. As a result, the priority was rapid restoration of a reliable production capability rather than development of an extensively abstracted or reusable software architecture. I implemented a straightforward state-machine architecture that closely followed the physical manufacturing sequence, minimising unnecessary complexity while keeping the execution flow deterministic and easy to diagnose.",
+      },
+
+      {
+        type: "text",
+        content:
+          "The programming station performed several tightly integrated manufacturing operations. Once the Unit Under Test (UUT) was placed into the fixture and the lid closed, an overhead Bed of Nails assembly was lowered onto electrical test and programming points on the PCB. A Cognex vision system then captured the barcode located on the underside of the product clamshell. The barcode data was parsed and used to query a network database, identifying the specific hardware configuration and the corresponding firmware required for that unit. The selected firmware was then flashed to the device using a SEGGER programmer. Following programming, the station performed a series of electrical and communications checks, including I2C transactions and basic voltage and current measurements, to confirm both correct PCB assembly and successful firmware deployment.",
+      },
+
+      {
+        type: "text",
+        content:
+          "The programming and preliminary test sequence took approximately 45 seconds. These first-pass checks were intentionally performed at the programming station because the downstream Automated Test Equipment (ATE) required approximately three minutes to execute its complete test suite. Detecting common assembly or programming faults at this earlier stage therefore prevented defective units from occupying the main ATE unnecessarily and improved overall production-line throughput.",
+      },
+
+      {
+        type: "text",
+        content:
+          "The emergency rewrite was complicated by the condition of the legacy system. A significant proportion of the original source code had been lost, with no complete backup available, and several hardware interfaces depended on obsolete drivers and software components originally designed for Windows XP. Considerable effort was therefore required to identify the interfaces being used, locate compatible drivers and SDKs, and reproduce the behaviour of the original application on Windows 10.",
+      },
+
+      {
+        type: "text",
+        content:
+          "Despite these constraints, the replacement system was successfully developed and deployed into production within two days. In addition to restoring the original programming and test functionality, I simplified the operator workflow. The legacy application required the operator to interact with the user interface and interpret several intermediate results. In the replacement system, closing the fixture lid automatically initiated the complete programming and test sequence. The operator was presented with a clear Pass/Fail result when the cycle completed, with additional diagnostic information displayed only when a failure occurred. Operator feedback following deployment was very positive, and the simplified workflow reduced both interaction time and the opportunity for interpretation errors.",
       },
     ],
+    
 
-    tags: [
-      "Bed of Nails",
-      "Firmware Flashing",
-      "Healthcare Device",
-      "Software",
-      "Automation",
-    ],
+      tags: [
+        "Bed of Nails",
+        "Production Test",
+        "Firmware Programming",
+        "Industrial Automation",
+        "Legacy System Migration",
+        "Hardware Integration",
+        "Telehealthcare",
+        "Automated Test Equipment",
+      ],
 
-    technologies: [
-      "LabVIEW",
-      "Segger J-Flash",
-      "SPI",
-      "bat Files",
-    ],
+      technologies: [
+        "LabVIEW",
+        "SEGGER J-Flash",
+        "Cognex Vision",
+        "I2C",
+        "Windows 10",
+        "Batch Scripts",
+        "SQL Database",
+      ],
 
     experience: [
       "Control-Software-Solutions",
