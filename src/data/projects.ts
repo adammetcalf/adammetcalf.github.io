@@ -410,6 +410,15 @@ export const projects: Project[] = [
         content:
           "Despite these constraints, the replacement system was successfully developed and deployed into production within two days. In addition to restoring the original programming and test functionality, I simplified the operator workflow. The legacy application required the operator to interact with the user interface and interpret several intermediate results. In the replacement system, closing the fixture lid automatically initiated the complete programming and test sequence. The operator was presented with a clear Pass/Fail result when the cycle completed, with additional diagnostic information displayed only when a failure occurred. Operator feedback following deployment was very positive, and the simplified workflow reduced both interaction time and the opportunity for interpretation errors.",
       },
+
+      {
+        type: "image",
+        src: "/images/projects/ProgrammingStation/ThankyouEmail.png",
+        alt: "Feedback Email",
+        caption:
+          "Operator Feedback (The email has been anonymised).",
+      },
+
     ],
     
 
@@ -574,6 +583,25 @@ export const projects: Project[] = [
           "Left: Tip control. Right: Base Control.",
       },
 
+      {
+        type: "text",
+        content:
+          "WRITE SOMETHING ABOUT SURFACE ASPERITIES, POLISHING, etc....",
+      },
+
+      {
+        type: "text",
+        content:
+          "Despite all the work to fabricate a 3D printed sample, we were not successful in obtaining a response. Much of this is that we could never be sure how close to the senstive area we were able to get, and we did not want to make contact and almost certianly destroy the chip. As a result, we decided to instead characterise a silicone and use silicone samples, which were compliant enough that we had confidence to directly interface with the chip (hopefully non-destructively).",
+      },
+
+      // Youtube link: https://youtu.be/19LoEENSa4Y
+      {
+        type: "video",
+        youtubeId: "19LoEENSa4Y",
+        caption:
+          "Two silicone samples. The first is pure silicone, and the second was cast with some Gallium Arsenide at its tip. Note their compliance",
+      },
     ],
 
     tags: [
