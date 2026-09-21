@@ -519,6 +519,37 @@ export const projects: Project[] = [
         content:
           "TODO. This too was a very complicated project.",
       },
+
+      {
+        type: "text",
+        content:
+          "Initially, an impedance control scheme was planned. This was implemented and validated on a rigid 3D printed test sample. Note that the robot is probing towards the sample, and if the contact is not normal to the surface it retracts, repositions and then probes again the exact same location but this time normal to the surface. COntact forces were measured by a 6-axis ATI loadcell, with the load data presented to the ROS 2 network by a Beckhoff PLC.",
+      },
+
+      // Youtube link: https://youtu.be/8d8Yw-pOxRo
+      {
+        type: "video",
+        youtubeId: "8d8Yw-pOxRo",
+        caption:
+          "Impedance controlled Kuka iiwa probing a curved 3D printed sample with sub-Newton contact forces.",
+      },
+
+      // Youtube link: https://youtu.be/WOHqkGgeAE0
+      {
+        type: "video",
+        youtubeId: "WOHqkGgeAE0",
+        caption:
+          "Impedance controlled Kuka iiwa probing the complex geometric anatomy of a heart with sub-Newton contact forces, and registering the surface and surface normals.",
+      },
+
+      // Youtube link: https://youtu.be/OIhmYFmHRHQ
+      {
+        type: "video",
+        youtubeId: "OIhmYFmHRHQ",
+        caption:
+          "The Kuka iiwa using the surface registration to perform a THz scan of the surface of the heart.",
+      },
+ 
     ],
 
     tags: [
