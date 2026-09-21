@@ -81,6 +81,14 @@ export const projects: Project[] = [
         content:
           "The laser harp can be played manually, or by presenting a USB flash drive containing MIDI files to the myRIO. The system parses the MIDI files and plays the music automatically.",
       },
+
+      // Youtube link: https://youtu.be/bJerY5lsi64
+      {
+        type: "video",
+        youtubeId: "bJerY5lsi64",
+        caption:
+          "Self playing laser harp.",
+      },
     ],
 
     links: [
