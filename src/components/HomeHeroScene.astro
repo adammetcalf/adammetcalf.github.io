@@ -1,0 +1,591 @@
+<div class="hero-scene" data-home-hero-scene>
+  <canvas class="hero-scene__canvas" aria-hidden="true"></canvas>
+</div>
+
+<style>
+  .hero-scene {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    min-height: 460px;
+    overflow: hidden;
+  }
+
+  .hero-scene__canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    background: transparent;
+  }
+
+  @media (max-width: 900px) {
+    .hero-scene {
+      aspect-ratio: 4 / 3;
+      min-height: 340px;
+    }
+  }
+</style>
+
+<script is:inline type="module">
+  (() => {
+    const root = document.querySelector('[data-home-hero-scene]');
+    if (!root) return;
+
+    const canvas = root.querySelector('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const DPR_CAP = 2;
+    const BLACK = '17, 19, 24';
+    const PI = Math.PI;
+
+    const clamp = (v, min = 0, max = 1) => Math.min(max, Math.max(min, v));
+    const lerp = (a, b, t) => a + (b - a) * t;
+    const vAdd = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+    const vSub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+    const vScale = (a, s) => [a[0] * s, a[1] * s, a[2] * s];
+    const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    const cross = (a, b) => [
+      a[1] * b[2] - a[2] * b[1],
+      a[2] * b[0] - a[0] * b[2],
+      a[0] * b[1] - a[1] * b[0],
+    ];
+    const len = (a) => Math.hypot(a[0], a[1], a[2]);
+    const norm = (a) => {
+      const l = len(a) || 1;
+      return [a[0] / l, a[1] / l, a[2] / l];
+    };
+
+    const mm = (A, B) => {
+      const r = new Array(9);
+      for (let i = 0; i < 3; i++) {
+        for (let j = 0; j < 3; j++) {
+          r[i * 3 + j] =
+            A[i * 3 + 0] * B[0 * 3 + j] +
+            A[i * 3 + 1] * B[1 * 3 + j] +
+            A[i * 3 + 2] * B[2 * 3 + j];
+        }
+      }
+      return r;
+    };
+
+    const mv = (A, v) => [
+      A[0] * v[0] + A[1] * v[1] + A[2] * v[2],
+      A[3] * v[0] + A[4] * v[1] + A[5] * v[2],
+      A[6] * v[0] + A[7] * v[1] + A[8] * v[2],
+    ];
+
+    const rpy = (r, p, y) => {
+      const cr = Math.cos(r), sr = Math.sin(r);
+      const cp = Math.cos(p), sp = Math.sin(p);
+      const cy = Math.cos(y), sy = Math.sin(y);
+      return [
+        cy * cp,
+        cy * sp * sr - sy * cr,
+        cy * sp * cr + sy * sr,
+        sy * cp,
+        sy * sp * sr + cy * cr,
+        sy * sp * cr - cy * sr,
+        -sp,
+        cp * sr,
+        cp * cr,
+      ];
+    };
+
+    const rotZ = (q) => {
+      const c = Math.cos(q);
+      const s = Math.sin(q);
+      return [c, -s, 0, s, c, 0, 0, 0, 1];
+    };
+
+    const JOINTS = [
+      { offset: [0, 0, 0.1575], rpy: [0, 0, 0], limit: (170 * PI) / 180 },
+      { offset: [0, 0, 0.2025], rpy: [PI / 2, 0, PI], limit: (120 * PI) / 180 },
+      { offset: [0, 0.2045, 0], rpy: [PI / 2, 0, PI], limit: (170 * PI) / 180 },
+      { offset: [0, 0, 0.2155], rpy: [PI / 2, 0, 0], limit: (120 * PI) / 180 },
+      { offset: [0, 0.1845, 0], rpy: [-PI / 2, PI, 0], limit: (170 * PI) / 180 },
+      { offset: [0, 0, 0.2155], rpy: [PI / 2, 0, 0], limit: (120 * PI) / 180 },
+      { offset: [0, 0.081, 0], rpy: [-PI / 2, PI, 0], limit: (175 * PI) / 180 },
+    ];
+
+    const JOINT_ROT = JOINTS.map((joint) => rpy(...joint.rpy));
+    const BASE_ROT = [1, 0, 0, 0, 0, 1, 0, -1, 0];
+    const REST_Q = [0, 0.55, 0, -1.35, 0, 0.9, 0];
+
+    function fk(q, base = [0, 0, 0]) {
+      let R = BASE_ROT.slice();
+      let t = base.slice();
+      const frames = [{ R, t }];
+
+      for (let i = 0; i < JOINTS.length; i++) {
+        t = vAdd(t, mv(R, JOINTS[i].offset));
+        R = mm(mm(R, JOINT_ROT[i]), rotZ(q[i]));
+        frames.push({ R, t });
+      }
+
+      const flange = {
+        R,
+        t: vAdd(t, mv(R, [0, 0, 0.045])),
+      };
+
+      return { frames, flange };
+    }
+
+    function solveLinear6(A, b) {
+      const n = 6;
+      const M = A.map((row, i) => row.concat([b[i]]));
+
+      for (let c = 0; c < n; c++) {
+        let pivot = c;
+        for (let r = c + 1; r < n; r++) {
+          if (Math.abs(M[r][c]) > Math.abs(M[pivot][c])) pivot = r;
+        }
+        [M[c], M[pivot]] = [M[pivot], M[c]];
+        const d = M[c][c] || 1e-6;
+        for (let r = 0; r < n; r++) {
+          if (r === c) continue;
+          const f = M[r][c] / d;
+          for (let k = c; k <= n; k++) M[r][k] -= f * M[c][k];
+        }
+      }
+
+      return M.map((row, i) => row[n] / (row[i] || 1e-6));
+    }
+
+    function solveIK(q, targetPosition, targetDirection, base, iterations = 3) {
+      const errorFor = (qq) => {
+        const { flange } = fk(qq, base);
+        const toolZ = [flange.R[2], flange.R[5], flange.R[8]];
+        const posError = vSub(targetPosition, flange.t);
+        const dirError = vScale(vSub(targetDirection, toolZ), 0.8);
+        return [
+          posError[0],
+          posError[1],
+          posError[2],
+          dirError[0],
+          dirError[1],
+          dirError[2],
+        ];
+      };
+
+      for (let iter = 0; iter < iterations; iter++) {
+        const e = errorFor(q);
+        const J = [];
+        const h = 1e-3;
+
+        for (let j = 0; j < JOINTS.length; j++) {
+          const q2 = q.slice();
+          q2[j] += h;
+          const e2 = errorFor(q2);
+          J.push(e2.map((value, i) => (value - e[i]) / h));
+        }
+
+        const A = [];
+        const lambda = 0.14;
+        for (let r = 0; r < 6; r++) {
+          A.push([]);
+          for (let c = 0; c < 6; c++) {
+            let sum = 0;
+            for (let j = 0; j < JOINTS.length; j++) sum += J[j][r] * J[j][c];
+            A[r].push(sum + (r === c ? lambda * lambda : 0));
+          }
+        }
+
+        const y = solveLinear6(A, e);
+        for (let j = 0; j < JOINTS.length; j++) {
+          let step = 0;
+          for (let r = 0; r < 6; r++) step += J[j][r] * y[r];
+          q[j] = clamp(
+            q[j] + clamp(-step + 0.02 * (REST_Q[j] - q[j]), -0.12, 0.12),
+            -JOINTS[j].limit * 0.9,
+            JOINTS[j].limit * 0.9,
+          );
+        }
+      }
+
+      return q;
+    }
+
+    function buildCylinder(start, end, radius, rings = 12, around = 18, capDensity = 6) {
+      const axis = vSub(end, start);
+      const axisLength = len(axis);
+      const w = norm(axis);
+      const tmp = Math.abs(w[1]) > 0.9 ? [1, 0, 0] : [0, 1, 0];
+      const u = norm(cross(w, tmp));
+      const v = cross(w, u);
+      const points = [];
+
+      for (let i = 0; i <= rings; i++) {
+        const t = i / rings;
+        const center = vAdd(start, vScale(axis, t));
+        for (let j = 0; j < around; j++) {
+          const a = (j / around) * PI * 2 + (i % 2) * (PI / around);
+          const normal = vAdd(vScale(u, Math.cos(a)), vScale(v, Math.sin(a)));
+          points.push({ p: vAdd(center, vScale(normal, radius)), n: normal });
+        }
+      }
+
+      for (const endCap of [0, 1]) {
+        const capCenter = endCap === 0 ? start : end;
+        const normal = endCap === 0 ? vScale(w, -1) : w;
+        for (let r = 0; r <= capDensity; r++) {
+          const rr = radius * (r / capDensity);
+          const count = Math.max(6, Math.round(around * (rr / radius || 0.2)));
+          for (let j = 0; j < count; j++) {
+            const a = (j / count) * PI * 2;
+            const radial = vAdd(vScale(u, Math.cos(a)), vScale(v, Math.sin(a)));
+            points.push({ p: vAdd(capCenter, vScale(radial, rr)), n: normal });
+          }
+        }
+      }
+
+      return points;
+    }
+
+    function buildSphere(center, radius, latSteps = 9, lonSteps = 16) {
+      const points = [];
+      for (let i = 1; i < latSteps; i++) {
+        const phi = (i / latSteps) * PI;
+        const sp = Math.sin(phi);
+        const cp = Math.cos(phi);
+        for (let j = 0; j < lonSteps; j++) {
+          const theta = (j / lonSteps) * PI * 2;
+          const normal = [Math.cos(theta) * sp, cp, Math.sin(theta) * sp];
+          points.push({ p: vAdd(center, vScale(normal, radius)), n: normal });
+        }
+      }
+      return points;
+    }
+
+    function decimate(points, stride = 2, offset = 0) {
+      return points.filter((_, index) => ((index + offset) % stride) === 0);
+    }
+
+    const LINK_POINT_CLOUDS = [
+      [
+        ...buildCylinder([0, 0, -0.09], [0, 0, -0.05], 0.135, 6, 16, 4),
+        ...buildCylinder([0, 0, -0.05], [0, 0, 0.1], 0.108, 10, 14, 4),
+        ...buildCylinder([0, 0, 0.1], [0, 0, 0.1575], 0.085, 6, 12, 4),
+      ],
+      decimate([
+        ...buildSphere([0, 0, 0], 0.07, 8, 14),
+        ...buildCylinder([0, 0, 0.025], [0, 0, 0.2025], 0.06, 10, 14, 4),
+      ], 2, 1),
+      decimate([
+        ...buildSphere([0, 0, 0], 0.065, 8, 14),
+        ...buildCylinder([0, 0, 0], [0, 0.2045, 0], 0.055, 10, 14, 4),
+      ], 2),
+      decimate([
+        ...buildSphere([0, 0, 0], 0.06, 8, 14),
+        ...buildCylinder([0, 0, 0.01], [0, 0, 0.2155], 0.05, 10, 14, 4),
+      ], 2, 1),
+      decimate([
+        ...buildSphere([0, 0, 0], 0.055, 7, 13),
+        ...buildCylinder([0, 0, 0], [0, 0.1845, 0], 0.045, 9, 12, 4),
+      ], 2),
+      decimate([
+        ...buildSphere([0, 0, 0], 0.05, 7, 12),
+        ...buildCylinder([0, 0, 0], [0, 0, 0.2155], 0.04, 9, 12, 4),
+      ], 2, 1),
+      decimate([
+        ...buildSphere([0, 0, 0], 0.045, 6, 11),
+        ...buildCylinder([0, 0, 0], [0, 0.081, 0], 0.037, 7, 11, 3),
+      ], 2),
+    ];
+
+    const FLANGE_POINT_CLOUD = decimate([
+      ...buildCylinder([0, 0, -0.012], [0, 0, 0.018], 0.04, 6, 12, 3),
+      ...buildCylinder([0, 0, 0.018], [0, 0, 0.03], 0.022, 4, 10, 3),
+    ], 2);
+
+    const state = {
+      width: 0,
+      height: 0,
+      dpr: 1,
+      running: false,
+      visible: true,
+      reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+      raf: 0,
+      q: REST_Q.slice(),
+      base: [0.02, -0.62, 0],
+
+      // Screen-space auto-fit state. This keeps the point cloud centred and
+      // correctly scaled regardless of the current robot pose or viewport.
+      fitScale: 0,
+      fitCx: 0,
+      fitCy: 0,
+    };
+
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const onMotionChange = (event) => {
+      state.reducedMotion = event.matches;
+      if (state.reducedMotion) {
+        stop();
+        render(0);
+      } else {
+        sync();
+      }
+    };
+    media.addEventListener?.('change', onMotionChange);
+
+    function resize() {
+      const rect = root.getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, DPR_CAP);
+      const width = Math.max(1, Math.round(rect.width * dpr));
+      const height = Math.max(1, Math.round(rect.height * dpr));
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
+      }
+      state.width = rect.width;
+      state.height = rect.height;
+      state.dpr = dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      resize();
+      render(performance.now() * 0.001);
+    });
+    resizeObserver.observe(root);
+
+    const intersectionObserver = new IntersectionObserver(
+      (entries) => {
+        state.visible = !!entries[0]?.isIntersecting;
+        sync();
+      },
+      { threshold: 0.05 },
+    );
+    intersectionObserver.observe(root);
+
+    document.addEventListener('visibilitychange', sync);
+
+    function getCamera(time) {
+      const eye = [
+        2.02 + 0.11 * Math.cos(time * 0.23),
+        1.34 + 0.06 * Math.sin(time * 0.19),
+        2.46 + 0.1 * Math.sin(time * 0.17),
+      ];
+      const target = [0.04, 0.36, 0.12];
+      const upRef = [0, 1, 0];
+      const forward = norm(vSub(target, eye));
+      const right = norm(cross(forward, upRef));
+      const up = cross(right, forward);
+      return { eye, target, forward, right, up };
+    }
+
+    function project(point, camera) {
+      const rel = vSub(point, camera.eye);
+      const x = dot(rel, camera.right);
+      const y = dot(rel, camera.up);
+      const z = dot(rel, camera.forward);
+
+      if (z <= 0.01) return null;
+
+      // Return camera-plane coordinates only. Pixel placement is deliberately
+      // handled later by fitPointCloud(), so page/layout changes cannot push
+      // the robot around inside the canvas.
+      return {
+        x: x / z,
+        y: -y / z,
+        z,
+      };
+    }
+
+    function fitPointCloud(dots, anchor) {
+      if (!dots.length || !anchor) return;
+
+      let minX = Infinity;
+      let maxX = -Infinity;
+      let minY = Infinity;
+      let maxY = -Infinity;
+
+      for (const p of dots) {
+        if (p.x < minX) minX = p.x;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.y > maxY) maxY = p.y;
+      }
+
+      const spanLeft = Math.max(anchor.x - minX, 1e-6);
+      const spanRight = Math.max(maxX - anchor.x, 1e-6);
+      const spanUp = Math.max(anchor.y - minY, 1e-6);
+      const spanDown = Math.max(maxY - anchor.y, 1e-6);
+
+      const screenAnchorX = state.width * 0.54;
+      const screenAnchorY = state.height * 0.84;
+
+      // Fit around a fixed base anchor so the pedestal stays locked in place.
+      const targetScale = Math.min(
+        (screenAnchorX - state.width * 0.14) / spanLeft,
+        (state.width * 0.94 - screenAnchorX) / spanRight,
+        (screenAnchorY - state.height * 0.08) / spanUp,
+        (state.height * 0.96 - screenAnchorY) / spanDown,
+      );
+
+      if (state.fitScale === 0) {
+        state.fitScale = targetScale;
+      } else {
+        state.fitScale = lerp(state.fitScale, targetScale, 0.08);
+      }
+
+      for (const p of dots) {
+        p.x = screenAnchorX + (p.x - anchor.x) * state.fitScale;
+        p.y = screenAnchorY + (p.y - anchor.y) * state.fitScale;
+      }
+    }
+
+    function targetAt(time) {
+      return [
+        0.29 + 0.22 * Math.cos(time * 0.8),
+        0.6 + 0.09 * Math.sin(time * 1.1),
+        0.12 + 0.22 * Math.sin(time * 0.55),
+      ];
+    }
+
+
+    function jointIdleOffsets(time) {
+      // Small coordinated joint motion so every axis contributes visually,
+      // while still preserving the main IK-driven end-effector behaviour.
+      return [
+        0.11 * Math.sin(time * 0.46 + 0.2),
+        0.08 * Math.sin(time * 0.63 + 1.1),
+        0.13 * Math.sin(time * 0.52 + 2.0),
+        0.09 * Math.sin(time * 0.71 + 0.7),
+        0.11 * Math.sin(time * 0.58 + 2.7),
+        0.08 * Math.sin(time * 0.67 + 1.9),
+        0.12 * Math.sin(time * 0.49 + 3.4),
+      ];
+    }
+
+    function drawPointCloud(time) {
+      const camera = getCamera(time);
+      const lightDir = norm([0.7, 1.0, 0.5]);
+
+      const target = targetAt(time);
+      const targetDir = norm(vSub([0.0, 0.26, 0.08], target));
+
+      const qSolved = solveIK(state.q.slice(), target, targetDir, state.base, state.reducedMotion ? 0 : 4);
+      const idleOffsets = jointIdleOffsets(time);
+      for (let i = 0; i < state.q.length; i++) {
+        const animatedTarget = clamp(
+          qSolved[i] + idleOffsets[i],
+          -JOINTS[i].limit * 0.9,
+          JOINTS[i].limit * 0.9,
+        );
+        state.q[i] = lerp(state.q[i], animatedTarget, 0.22);
+      }
+
+      const q = state.q;
+      const { frames, flange } = fk(q, state.base);
+
+      const dots = [];
+
+      for (let i = 0; i < LINK_POINT_CLOUDS.length; i++) {
+        const frame = frames[i];
+        for (const point of LINK_POINT_CLOUDS[i]) {
+          const world = vAdd(frame.t, mv(frame.R, point.p));
+          const normal = norm(mv(frame.R, point.n));
+          const proj = project(world, camera);
+          if (!proj) continue;
+          const lit = clamp(0.22 + 0.78 * Math.max(0, dot(normal, lightDir)));
+          const depthFade = clamp(1.3 - proj.z / 5.2, 0.28, 1);
+          dots.push({
+            x: proj.x,
+            y: proj.y,
+            z: proj.z,
+            r: 0,
+            kind: i === 0 ? 'base' : 'link',
+            a: lit * depthFade * (i === 0 ? 1.08 : 0.82),
+          });
+        }
+      }
+
+      for (const point of FLANGE_POINT_CLOUD) {
+        const world = vAdd(flange.t, mv(flange.R, point.p));
+        const normal = norm(mv(flange.R, point.n));
+        const proj = project(world, camera);
+        if (!proj) continue;
+        const lit = clamp(0.3 + 0.7 * Math.max(0, dot(normal, lightDir)));
+        dots.push({
+          x: proj.x,
+          y: proj.y,
+          z: proj.z,
+          r: 0,
+          kind: 'flange',
+          a: lit * 0.78,
+        });
+      }
+
+      // Perspective-style particle sizing: points on surfaces nearer to the
+      // camera are larger, while rear surfaces stay finer and more airy.
+      let nearestZ = Infinity;
+      let farthestZ = -Infinity;
+      for (const p of dots) {
+        if (p.z < nearestZ) nearestZ = p.z;
+        if (p.z > farthestZ) farthestZ = p.z;
+      }
+
+      const depthSpan = Math.max(farthestZ - nearestZ, 1e-6);
+      for (const p of dots) {
+        const near = clamp((farthestZ - p.z) / depthSpan);
+        const easedNear = near * near * (3 - 2 * near);
+
+        if (p.kind === 'flange') {
+          p.r = (0.32 + easedNear * 0.68) * 1.1;
+        } else if (p.kind === 'base') {
+          p.r = (0.4 + easedNear * 0.9) * 1.12;
+        } else {
+          p.r = (0.34 + easedNear * 0.82) * 1.1;
+        }
+      }
+
+      const baseAnchor = project(vAdd(state.base, [0, 0, -0.09]), camera);
+      fitPointCloud(dots, baseAnchor);
+
+      dots.sort((a, b) => b.z - a.z);
+      for (const dotData of dots) {
+        ctx.beginPath();
+        ctx.arc(dotData.x, dotData.y, dotData.r, 0, PI * 2);
+        const alpha = dotData.kind === 'base'
+          ? 0.08 + dotData.a * 0.72
+          : 0.045 + dotData.a * 0.62;
+        ctx.fillStyle = `rgba(${BLACK}, ${alpha})`;
+        ctx.fill();
+      }
+    }
+
+    function render(timeSeconds) {
+      resize();
+      ctx.clearRect(0, 0, state.width, state.height);
+      drawPointCloud(timeSeconds);
+    }
+
+    function frame(now) {
+      render(now * 0.001);
+      if (state.running) state.raf = requestAnimationFrame(frame);
+    }
+
+    function start() {
+      if (state.running) return;
+      state.running = true;
+      state.raf = requestAnimationFrame(frame);
+    }
+
+    function stop() {
+      state.running = false;
+      cancelAnimationFrame(state.raf);
+    }
+
+    function sync() {
+      const shouldRun = state.visible && !document.hidden && !state.reducedMotion;
+      if (shouldRun) start();
+      else stop();
+    }
+
+    render(0);
+    sync();
+  })();
+</script>
