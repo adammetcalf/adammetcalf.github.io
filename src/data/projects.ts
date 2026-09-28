@@ -139,7 +139,7 @@ export const projects: Project[] = [
       {
         type: "text",
         content:
-          "TODO. This was a very complicated project.",
+          "TODO.",
       },
     ],
 
@@ -244,6 +244,12 @@ export const projects: Project[] = [
         type: "text",
         content:
           "Tool concentricity was also an issue, so I designed a new tool mount which used a guiding flange to guarantee reliable engagement with the potentiometers, using the principles of embodied intelligence. In retrospect, this would have enabled the use of a much cheaper gantry system with a less precise tolerance.",
+      },
+
+      {
+        type: "text",
+        content:
+          "TODO. Motion videos.",
       },
     ],
 
@@ -427,6 +433,12 @@ export const projects: Project[] = [
           "Operator Feedback (The email has been anonymised).",
       },
 
+      {
+        type: "text",
+        content:
+          "TODO. Images.",
+      },
+
     ],
     
 
@@ -483,6 +495,12 @@ export const projects: Project[] = [
         content:
           "However, the MSCRs are challenging to control due to their complex dynamics and the lack of a closed-form inverse kinematics solution. Furthermore, in the context of endoluminal applications in minimily invasive surgery, positional feedback is challenging. The difficulty in locating the MSCRs using tradionall mechanisms such as Ultrasound make localisation and therefore automating the path planning and control of the MSCRs very difficult.",
       },
+
+      {
+        type: "text",
+        content:
+          "TODO. Images.",
+      },
     ],
 
     tags: [
@@ -531,7 +549,7 @@ export const projects: Project[] = [
       {
         type: "text",
         content:
-          "Initially, an impedance control scheme was planned. This was implemented and validated on a rigid 3D printed test sample. Note that the robot is probing towards the sample, and if the contact is not normal to the surface it retracts, repositions and then probes again the exact same location but this time normal to the surface. COntact forces were measured by a 6-axis ATI loadcell, with the load data presented to the ROS 2 network by a Beckhoff PLC.",
+          "Initially, an impedance control scheme was planned. This was implemented and validated on a rigid 3D printed test sample. Note that the robot is probing towards the sample, and if the contact is not normal to the surface it retracts, repositions and then probes again the exact same location but this time normal to the surface. Contact forces were measured by a 6-axis ATI loadcell, with the load data presented to the ROS 2 network by a Beckhoff PLC.",
       },
 
       // Youtube link: https://youtu.be/8d8Yw-pOxRo
@@ -556,6 +574,12 @@ export const projects: Project[] = [
         youtubeId: "OIhmYFmHRHQ",
         caption:
           "The Kuka iiwa using the surface registration to perform a THz scan of the surface of the heart.",
+      },
+
+      {
+        type: "text",
+        content:
+          "TODO. Summary.",
       },
  
     ],
@@ -641,6 +665,12 @@ export const projects: Project[] = [
         caption:
           "Two silicone samples. The first is pure silicone, and the second was cast with some Gallium Arsenide at its tip. Note their compliance",
       },
+
+      {
+        type: "text",
+        content:
+          "TODO. Summary, videos.",
+      },
     ],
 
     tags: [
@@ -685,8 +715,17 @@ export const projects: Project[] = [
       {
         type: "text",
         content:
-          "TODO. This too was a very complicated project.",
+          "TODO.",
       },
+
+      // https://youtu.be/jk1qCt441dE
+      {
+        type: "video",
+        youtubeId: "jk1qCt441dE",
+        caption:
+          "The Dual Arm platform manipulating a Magnetically Actuated Soft Continuum Robot, running through my new ROS2 interface",
+      },
+  
     ],
 
     tags: [
