@@ -1,22 +1,31 @@
 ---
 import Layout from "../layouts/Layout.astro";
+import HomeHeroScene from "../components/HomeHeroScene.astro";
 ---
 
 <Layout title="Adam Metcalf">
   <main>
     <section class="hero">
-      <h1>Adam<br />Metcalf<br />PhD</h1>
+      <div class="hero__layout">
+        <div class="hero__copy">
+          <h1>Adam<br />Metcalf<br />PhD</h1>
 
-      <h2>Robotics · Systems Engineering · Automation · Electronics · Software · Hardware</h2>
+          <h2>Robotics · Systems Engineering · Automation · Electronics · Software · Hardware</h2>
 
-      <p>
-        Engineer and researcher specialising in robotics, control,
-        mechatronics, system architecture, and the integration of complex hardware and software
-        systems.
-        <br />
-        <br />
-        Please note this website is currently under construction and some content may be missing or incomplete.
-      </p>
+          <p>
+            Engineer and researcher specialising in robotics, control,
+            mechatronics, system architecture, and the integration of complex hardware and software
+            systems.
+            <br />
+            <br />
+            Please note this website is currently under construction and some content may be missing or incomplete.
+          </p>
+        </div>
+
+        <div class="hero__visual" aria-label="Animated point-cloud rendering of a KUKA iiwa arm">
+          <HomeHeroScene />
+        </div>
+      </div>
     </section>
 
     <section>
@@ -74,18 +83,24 @@ import Layout from "../layouts/Layout.astro";
   }
 
   .hero {
-    min-height: 70vh;
+    position: relative;
+    min-height: max(760px, 78vh);
+    padding: 2rem 0 5rem;
+  }
 
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
+  .hero__layout {
+    width: 100%;
+  }
 
-    max-width: 850px;
+  .hero__copy {
+    position: relative;
+    z-index: 1;
+    max-width: min(54ch, 46vw);
+    padding-top: 0.5rem;
   }
 
   .hero h1 {
     margin: 0;
-
     font-size: clamp(3.5rem, 9vw, 7rem);
     line-height: 0.95;
     letter-spacing: -0.05em;
@@ -93,18 +108,25 @@ import Layout from "../layouts/Layout.astro";
 
   .hero h2 {
     margin: 1.5rem 0;
-
     font-size: clamp(1.3rem, 3vw, 2rem);
     font-weight: 400;
+    line-height: 1.35;
   }
 
   .hero p {
     max-width: 700px;
-
     font-size: 1.2rem;
     line-height: 1.7;
-
     color: #555;
+  }
+
+  .hero__visual {
+    position: absolute;
+    top: clamp(0.75rem, 2vw, 1.5rem);
+    right: 0;
+    width: clamp(420px, 43vw, 640px);
+    z-index: 0;
+    pointer-events: none;
   }
 
   section {
@@ -124,23 +146,19 @@ import Layout from "../layouts/Layout.astro";
 
   .link-card {
     display: block;
-
     border-top: 2px solid #1c1c1c;
     padding-top: 2rem;
-
     color: inherit;
     text-decoration: none;
   }
 
   .link-card h3 {
     margin: 0 0 1rem;
-
     font-size: 2rem;
   }
 
   .link-card p {
     max-width: 450px;
-
     color: #555;
     line-height: 1.7;
     font-size: 1.1rem;
@@ -149,10 +167,8 @@ import Layout from "../layouts/Layout.astro";
   .link-card .arrow {
     display: inline-block;
     margin-top: 1rem;
-
     font-weight: 600;
     text-decoration: underline;
-
     transition: transform 0.15s ease;
   }
 
@@ -162,9 +178,30 @@ import Layout from "../layouts/Layout.astro";
 
   .about {
     max-width: 750px;
-
     font-size: 1.2rem;
     line-height: 1.8;
+  }
+
+  @media (max-width: 900px) {
+    .hero {
+      min-height: auto;
+      padding-top: 2rem;
+      padding-bottom: 3rem;
+    }
+
+    .hero__copy {
+      max-width: none;
+      padding-top: 0;
+    }
+
+    .hero__visual {
+      position: relative;
+      top: auto;
+      right: auto;
+      width: min(100%, 560px);
+      margin: 2rem auto 0;
+      pointer-events: none;
+    }
   }
 
   @media (max-width: 700px) {
@@ -172,8 +209,9 @@ import Layout from "../layouts/Layout.astro";
       grid-template-columns: 1fr;
     }
 
-    .hero {
-      min-height: 60vh;
+    .hero p,
+    .about {
+      font-size: 1.1rem;
     }
   }
 </style>
