@@ -39,13 +39,25 @@
 
     const DPR_CAP = 2;
     const BLACK = '17, 19, 24';
+    const BLUE = '42, 118, 255';
     const PI = Math.PI;
+
+    const ROBOT_SCENE_DURATION = 5.0;
+    const BED_SCENE_DURATION = 10.0;
+    const LOOP_DURATION = ROBOT_SCENE_DURATION + BED_SCENE_DURATION;
 
     const clamp = (v, min = 0, max = 1) => Math.min(max, Math.max(min, v));
     const lerp = (a, b, t) => a + (b - a) * t;
+    const smooth = (t) => t * t * (3 - 2 * t);
+    const easeInOut = (t) => 0.5 - 0.5 * Math.cos(clamp(t) * PI);
+    const pulse = (x, c, w) => Math.exp(-Math.pow((x - c) / w, 2));
+    const fract = (x) => x - Math.floor(x);
+    const rand2 = (a, b, salt = 0) => fract(Math.sin(a * 127.1 + b * 311.7 + salt * 74.7) * 43758.5453123);
+
     const vAdd = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
     const vSub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
     const vScale = (a, s) => [a[0] * s, a[1] * s, a[2] * s];
+    const vLerp = (a, b, t) => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
     const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
     const cross = (a, b) => [
       a[1] * b[2] - a[2] * b[1],
@@ -99,6 +111,8 @@
       const s = Math.sin(q);
       return [c, -s, 0, s, c, 0, 0, 0, 1];
     };
+
+    const IDENTITY = [1, 0, 0, 0, 1, 0, 0, 0, 1];
 
     const JOINTS = [
       { offset: [0, 0, 0.1575], rpy: [0, 0, 0], limit: (170 * PI) / 180 },
@@ -161,12 +175,8 @@
         const posError = vSub(targetPosition, flange.t);
         const dirError = vScale(vSub(targetDirection, toolZ), 0.8);
         return [
-          posError[0],
-          posError[1],
-          posError[2],
-          dirError[0],
-          dirError[1],
-          dirError[2],
+          posError[0], posError[1], posError[2],
+          dirError[0], dirError[1], dirError[2],
         ];
       };
 
@@ -210,7 +220,6 @@
 
     function buildCylinder(start, end, radius, rings = 12, around = 18, capDensity = 6) {
       const axis = vSub(end, start);
-      const axisLength = len(axis);
       const w = norm(axis);
       const tmp = Math.abs(w[1]) > 0.9 ? [1, 0, 0] : [0, 1, 0];
       const u = norm(cross(w, tmp));
@@ -232,7 +241,7 @@
         const normal = endCap === 0 ? vScale(w, -1) : w;
         for (let r = 0; r <= capDensity; r++) {
           const rr = radius * (r / capDensity);
-          const count = Math.max(6, Math.round(around * (rr / radius || 0.2)));
+          const count = Math.max(6, Math.round(around * Math.max(rr / radius, 0.2)));
           for (let j = 0; j < count; j++) {
             const a = (j / count) * PI * 2;
             const radial = vAdd(vScale(u, Math.cos(a)), vScale(v, Math.sin(a)));
@@ -256,6 +265,43 @@
           points.push({ p: vAdd(center, vScale(normal, radius)), n: normal });
         }
       }
+      return points;
+    }
+
+    function buildBox(center, sx, sy, sz, nx = 10, ny = 4, nz = 8) {
+      const [cx, cy, cz] = center;
+      const x0 = cx - sx / 2, x1 = cx + sx / 2;
+      const y0 = cy - sy / 2, y1 = cy + sy / 2;
+      const z0 = cz - sz / 2, z1 = cz + sz / 2;
+      const points = [];
+
+      for (let ix = 0; ix <= nx; ix++) {
+        const x = lerp(x0, x1, ix / nx);
+        for (let iz = 0; iz <= nz; iz++) {
+          const z = lerp(z0, z1, iz / nz);
+          points.push({ p: [x, y1, z], n: [0, 1, 0] });
+          points.push({ p: [x, y0, z], n: [0, -1, 0] });
+        }
+      }
+
+      for (let ix = 0; ix <= nx; ix++) {
+        const x = lerp(x0, x1, ix / nx);
+        for (let iy = 0; iy <= ny; iy++) {
+          const y = lerp(y0, y1, iy / ny);
+          points.push({ p: [x, y, z1], n: [0, 0, 1] });
+          points.push({ p: [x, y, z0], n: [0, 0, -1] });
+        }
+      }
+
+      for (let iz = 0; iz <= nz; iz++) {
+        const z = lerp(z0, z1, iz / nz);
+        for (let iy = 0; iy <= ny; iy++) {
+          const y = lerp(y0, y1, iy / ny);
+          points.push({ p: [x1, y, z], n: [1, 0, 0] });
+          points.push({ p: [x0, y, z], n: [-1, 0, 0] });
+        }
+      }
+
       return points;
     }
 
@@ -300,6 +346,100 @@
       ...buildCylinder([0, 0, 0.018], [0, 0, 0.03], 0.022, 4, 10, 3),
     ], 2);
 
+    const PCB_BOARD_CLOUD = decimate(buildBox([0, 0, 0], 1.45, 0.03, 1.0, 18, 3, 14), 2);
+
+    const PCB_COMPONENT_CLOUDS = [
+      buildBox([0.0, 0.052, 0.02], 0.38, 0.085, 0.26, 10, 4, 8),
+      buildBox([-0.48, 0.048, -0.3], 0.18, 0.065, 0.14, 7, 3, 6),
+      buildBox([-0.25, 0.045, -0.34], 0.12, 0.05, 0.08, 5, 3, 4),
+      buildBox([0.44, 0.048, -0.28], 0.2, 0.065, 0.14, 8, 3, 6),
+      buildBox([0.22, 0.046, -0.38], 0.16, 0.05, 0.08, 6, 3, 4),
+      buildBox([-0.48, 0.045, 0.28], 0.22, 0.055, 0.13, 8, 3, 5),
+      buildBox([0.47, 0.05, 0.28], 0.24, 0.06, 0.14, 8, 3, 6),
+      buildBox([-0.12, 0.043, 0.34], 0.18, 0.05, 0.08, 6, 3, 4),
+      buildBox([0.17, 0.043, 0.34], 0.18, 0.05, 0.08, 6, 3, 4),
+      buildBox([-0.58, 0.042, 0.0], 0.12, 0.045, 0.18, 5, 3, 6),
+      buildBox([0.6, 0.042, 0.02], 0.12, 0.045, 0.18, 5, 3, 6),
+      buildBox([0.0, 0.042, -0.42], 0.24, 0.045, 0.08, 7, 3, 4),
+    ].map((cloud, i) => decimate(cloud, 2 + (i % 3 === 0 ? 1 : 0), i % 2));
+
+    const PCB_DETAIL_CLOUDS = [];
+    // Connector / header rows
+    for (let i = 0; i < 8; i++) {
+      PCB_DETAIL_CLOUDS.push(decimate(buildBox([-0.69 + i * 0.05, 0.036, -0.46], 0.03, 0.03, 0.04, 3, 2, 3), 1));
+      PCB_DETAIL_CLOUDS.push(decimate(buildBox([-0.69 + i * 0.05, 0.036, 0.46], 0.03, 0.03, 0.04, 3, 2, 3), 1));
+    }
+    // Passive components rows
+    for (let i = 0; i < 6; i++) {
+      PCB_DETAIL_CLOUDS.push(decimate(buildBox([-0.52 + i * 0.18, 0.035, -0.14], 0.06, 0.028, 0.03, 4, 2, 2), 1));
+      PCB_DETAIL_CLOUDS.push(decimate(buildBox([-0.49 + i * 0.17, 0.035, 0.18], 0.055, 0.028, 0.03, 4, 2, 2), 1));
+    }
+    // Low-profile traces / buses
+    for (const trace of [
+      [-0.28, 0.018, 0.0, 0.66, 0.006, 0.025],
+      [0.22, 0.018, 0.11, 0.56, 0.006, 0.025],
+      [0.0, 0.018, -0.24, 0.72, 0.006, 0.025],
+      [-0.56, 0.018, 0.04, 0.025, 0.006, 0.46],
+      [0.56, 0.018, -0.03, 0.025, 0.006, 0.42],
+      [0.0, 0.018, 0.4, 0.9, 0.006, 0.02],
+      [0.0, 0.018, -0.4, 0.9, 0.006, 0.02],
+    ]) {
+      PCB_DETAIL_CLOUDS.push(decimate(buildBox([trace[0], trace[1], trace[2]], trace[3], trace[4], trace[5], 10, 1, 3), 2));
+    }
+
+    const FIXTURE_FRAME_CLOUDS = [
+      decimate(buildBox([0, -0.19, 0], 1.78, 0.06, 1.28, 14, 3, 12), 3),
+      decimate(buildBox([0, -0.11, -0.63], 1.62, 0.18, 0.08, 12, 5, 2), 2),
+      decimate(buildBox([0, -0.11, 0.63], 1.62, 0.18, 0.08, 12, 5, 2), 2),
+      decimate(buildBox([-0.82, -0.11, 0], 0.08, 0.18, 1.12, 2, 5, 10), 2),
+      decimate(buildBox([0.82, -0.11, 0], 0.08, 0.18, 1.12, 2, 5, 10), 2),
+      decimate(buildBox([-0.82, -0.04, -0.55], 0.12, 0.24, 0.12, 3, 6, 3), 2),
+      decimate(buildBox([0.82, -0.04, -0.55], 0.12, 0.24, 0.12, 3, 6, 3), 2),
+      decimate(buildBox([-0.82, -0.04, 0.55], 0.12, 0.24, 0.12, 3, 6, 3), 2),
+      decimate(buildBox([0.82, -0.04, 0.55], 0.12, 0.24, 0.12, 3, 6, 3), 2),
+    ];
+
+    const PAD_MARKER_CLOUDS = [];
+    const padXs = [-0.52, -0.28, 0, 0.28, 0.52];
+    const padZs = [-0.34, -0.12, 0.12, 0.34];
+    for (const x of padXs) {
+      for (const z of padZs) {
+        PAD_MARKER_CLOUDS.push(decimate(buildBox([x, -0.011, z], 0.07, 0.01, 0.05, 4, 1, 3), 1));
+      }
+    }
+
+    const NAIL_LAYOUT = [];
+    let nailSeq = 0;
+    for (let ix = -4; ix <= 4; ix++) {
+      for (let iz = -3; iz <= 3; iz++) {
+        const keep = rand2(ix, iz, 21);
+        const radialBias = 1 - clamp((Math.abs(ix) / 4 + Math.abs(iz) / 3) * 0.45, 0, 0.55);
+        if (keep > 0.78 + radialBias * 0.08) continue;
+        if (Math.abs(ix) <= 1 && Math.abs(iz) <= 1 && rand2(ix, iz, 22) > 0.62) continue;
+
+        const x = ix * 0.125 + (rand2(ix, iz, 23) - 0.5) * 0.04;
+        const z = iz * 0.11 + (rand2(ix, iz, 24) - 0.5) * 0.038;
+        const r1 = rand2(ix, iz, 1);
+        const r2 = rand2(ix, iz, 2);
+        const r3 = rand2(ix, iz, 3);
+        const r4 = rand2(ix, iz, 4);
+        NAIL_LAYOUT.push({
+          x,
+          z,
+          seq: nailSeq++,
+          group: Math.floor(r1 * 5),
+          activationA: 0.55 + r1 * 1.9,
+          activationB: 3.2 + r2 * 2.35,
+          activationC: 6.2 + r3 * 2.25,
+          activationD: 8.5 + r4 * 1.0,
+          widthA: 0.16 + rand2(ix, iz, 5) * 0.1,
+          widthB: 0.16 + rand2(ix, iz, 6) * 0.11,
+          widthC: 0.16 + rand2(ix, iz, 7) * 0.1,
+          widthD: 0.12 + rand2(ix, iz, 8) * 0.08,
+          phase: rand2(ix, iz, 9) * PI * 2,
+        });
+      }
+    }
     const state = {
       width: 0,
       height: 0,
@@ -310,12 +450,9 @@
       raf: 0,
       q: REST_Q.slice(),
       base: [0.02, -0.62, 0],
-
-      // Screen-space auto-fit state. This keeps the point cloud centred and
-      // correctly scaled regardless of the current robot pose or viewport.
-      fitScale: 0,
-      fitCx: 0,
-      fitCy: 0,
+      robotFit: { scale: 0 },
+      bedFit: { scale: 0 },
+      currentScene: '',
     };
 
     const media = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -362,13 +499,14 @@
 
     document.addEventListener('visibilitychange', sync);
 
-    function getCamera(time) {
-      const eye = [
-        2.02 + 0.11 * Math.cos(time * 0.23),
-        1.34 + 0.06 * Math.sin(time * 0.19),
-        2.46 + 0.1 * Math.sin(time * 0.17),
-      ];
-      const target = [0.04, 0.36, 0.12];
+    function setScene(sceneName) {
+      if (state.currentScene === sceneName) return;
+      state.currentScene = sceneName;
+      if (sceneName === 'robot') state.robotFit.scale = 0;
+      if (sceneName === 'bed') state.bedFit.scale = 0;
+    }
+
+    function makeCamera(eye, target) {
       const upRef = [0, 1, 0];
       const forward = norm(vSub(target, eye));
       const right = norm(cross(forward, upRef));
@@ -381,27 +519,17 @@
       const x = dot(rel, camera.right);
       const y = dot(rel, camera.up);
       const z = dot(rel, camera.forward);
-
       if (z <= 0.01) return null;
-
-      // Return camera-plane coordinates only. Pixel placement is deliberately
-      // handled later by fitPointCloud(), so page/layout changes cannot push
-      // the robot around inside the canvas.
-      return {
-        x: x / z,
-        y: -y / z,
-        z,
-      };
+      return { x: x / z, y: -y / z, z };
     }
 
-    function fitPointCloud(dots, anchor) {
+    function fitAnchoredDots(dots, anchor, fitState, opts = {}) {
       if (!dots.length || !anchor) return;
 
       let minX = Infinity;
       let maxX = -Infinity;
       let minY = Infinity;
       let maxY = -Infinity;
-
       for (const p of dots) {
         if (p.x < minX) minX = p.x;
         if (p.x > maxX) maxX = p.x;
@@ -409,31 +537,104 @@
         if (p.y > maxY) maxY = p.y;
       }
 
+      const screenAnchorX = state.width * (opts.screenX ?? 0.54);
+      const screenAnchorY = state.height * (opts.screenY ?? 0.84);
+      const left = state.width * (opts.left ?? 0.14);
+      const right = state.width * (opts.right ?? 0.94);
+      const top = state.height * (opts.top ?? 0.08);
+      const bottom = state.height * (opts.bottom ?? 0.96);
+
       const spanLeft = Math.max(anchor.x - minX, 1e-6);
       const spanRight = Math.max(maxX - anchor.x, 1e-6);
       const spanUp = Math.max(anchor.y - minY, 1e-6);
       const spanDown = Math.max(maxY - anchor.y, 1e-6);
 
-      const screenAnchorX = state.width * 0.54;
-      const screenAnchorY = state.height * 0.84;
-
-      // Fit around a fixed base anchor so the pedestal stays locked in place.
       const targetScale = Math.min(
-        (screenAnchorX - state.width * 0.14) / spanLeft,
-        (state.width * 0.94 - screenAnchorX) / spanRight,
-        (screenAnchorY - state.height * 0.08) / spanUp,
-        (state.height * 0.96 - screenAnchorY) / spanDown,
+        (screenAnchorX - left) / spanLeft,
+        (right - screenAnchorX) / spanRight,
+        (screenAnchorY - top) / spanUp,
+        (bottom - screenAnchorY) / spanDown,
       );
 
-      if (state.fitScale === 0) {
-        state.fitScale = targetScale;
-      } else {
-        state.fitScale = lerp(state.fitScale, targetScale, 0.08);
-      }
+      const smoothAmount = opts.smooth ?? 0.08;
+      if (!fitState.scale) fitState.scale = targetScale;
+      else fitState.scale = lerp(fitState.scale, targetScale, smoothAmount);
 
       for (const p of dots) {
-        p.x = screenAnchorX + (p.x - anchor.x) * state.fitScale;
-        p.y = screenAnchorY + (p.y - anchor.y) * state.fitScale;
+        p.x = screenAnchorX + (p.x - anchor.x) * fitState.scale;
+        p.y = screenAnchorY + (p.y - anchor.y) * fitState.scale;
+      }
+    }
+
+    function pushCloud(dots, cloud, frame, camera, lightDir, kind, alphaMul = 1, color = 'black') {
+      const R = frame?.R || IDENTITY;
+      const t = frame?.t || [0, 0, 0];
+      for (const point of cloud) {
+        const world = vAdd(t, mv(R, point.p));
+        const normal = norm(mv(R, point.n));
+        const proj = project(world, camera);
+        if (!proj) continue;
+        const lit = clamp(0.24 + 0.76 * Math.max(0, dot(normal, lightDir)));
+        const depthFade = clamp(1.35 - proj.z / 5.8, 0.32, 1);
+        dots.push({
+          x: proj.x,
+          y: proj.y,
+          z: proj.z,
+          r: 0,
+          kind,
+          color,
+          a: lit * depthFade * alphaMul,
+        });
+      }
+    }
+
+    function sizeAndDrawDots(dots) {
+      let nearestZ = Infinity;
+      let farthestZ = -Infinity;
+      for (const p of dots) {
+        if (p.z < nearestZ) nearestZ = p.z;
+        if (p.z > farthestZ) farthestZ = p.z;
+      }
+      const depthSpan = Math.max(farthestZ - nearestZ, 1e-6);
+
+      for (const p of dots) {
+        const near = clamp((farthestZ - p.z) / depthSpan);
+        const easedNear = smooth(near);
+
+        if (p.kind === 'flange') {
+          p.r = (0.32 + easedNear * 0.68) * 1.1;
+        } else if (p.kind === 'base') {
+          p.r = (0.4 + easedNear * 0.9) * 1.12;
+        } else if (p.kind === 'pin-active') {
+          p.r = 0.56 + easedNear * 1.08;
+        } else if (p.kind === 'pin') {
+          p.r = 0.46 + easedNear * 0.9;
+        } else if (p.kind === 'fixture') {
+          p.r = 0.3 + easedNear * 0.64;
+        } else if (p.kind === 'pcb-detail') {
+          p.r = 0.32 + easedNear * 0.68;
+        } else if (p.kind === 'pcb') {
+          p.r = 0.35 + easedNear * 0.76;
+        } else {
+          p.r = (0.34 + easedNear * 0.82) * 1.1;
+        }
+      }
+
+      dots.sort((a, b) => b.z - a.z);
+      for (const dotData of dots) {
+        ctx.beginPath();
+        ctx.arc(dotData.x, dotData.y, dotData.r, 0, PI * 2);
+
+        let alpha;
+        if (dotData.kind === 'base') alpha = 0.08 + dotData.a * 0.72;
+        else if (dotData.kind === 'pin-active') alpha = 0.16 + dotData.a * 0.92;
+        else if (dotData.kind === 'pin') alpha = 0.085 + dotData.a * 0.74;
+        else if (dotData.kind === 'pcb-detail') alpha = 0.05 + dotData.a * 0.6;
+        else alpha = 0.045 + dotData.a * 0.62;
+
+        const rgb = dotData.color === 'blue' ? BLUE : BLACK;
+        ctx.fillStyle = `rgba(${rgb}, ${alpha})`;
+        ctx.fill();
       }
     }
 
@@ -445,10 +646,7 @@
       ];
     }
 
-
     function jointIdleOffsets(time) {
-      // Small coordinated joint motion so every axis contributes visually,
-      // while still preserving the main IK-driven end-effector behaviour.
       return [
         0.11 * Math.sin(time * 0.46 + 0.2),
         0.08 * Math.sin(time * 0.63 + 1.1),
@@ -460,10 +658,19 @@
       ];
     }
 
-    function drawPointCloud(time) {
-      const camera = getCamera(time);
-      const lightDir = norm([0.7, 1.0, 0.5]);
+    function getRobotCamera(time) {
+      const eye = [
+        2.02 + 0.11 * Math.cos(time * 0.23),
+        1.34 + 0.06 * Math.sin(time * 0.19),
+        2.46 + 0.1 * Math.sin(time * 0.17),
+      ];
+      const target = [0.04, 0.36, 0.12];
+      return makeCamera(eye, target);
+    }
 
+    function drawRobotScene(time) {
+      const camera = getRobotCamera(time);
+      const lightDir = norm([0.7, 1.0, 0.5]);
       const target = targetAt(time);
       const targetDir = norm(vSub([0.0, 0.26, 0.08], target));
 
@@ -478,89 +685,149 @@
         state.q[i] = lerp(state.q[i], animatedTarget, 0.22);
       }
 
-      const q = state.q;
-      const { frames, flange } = fk(q, state.base);
-
+      const { frames, flange } = fk(state.q, state.base);
       const dots = [];
 
       for (let i = 0; i < LINK_POINT_CLOUDS.length; i++) {
-        const frame = frames[i];
-        for (const point of LINK_POINT_CLOUDS[i]) {
-          const world = vAdd(frame.t, mv(frame.R, point.p));
-          const normal = norm(mv(frame.R, point.n));
-          const proj = project(world, camera);
-          if (!proj) continue;
-          const lit = clamp(0.22 + 0.78 * Math.max(0, dot(normal, lightDir)));
-          const depthFade = clamp(1.3 - proj.z / 5.2, 0.28, 1);
-          dots.push({
-            x: proj.x,
-            y: proj.y,
-            z: proj.z,
-            r: 0,
-            kind: i === 0 ? 'base' : 'link',
-            a: lit * depthFade * (i === 0 ? 1.08 : 0.82),
-          });
-        }
+        pushCloud(
+          dots,
+          LINK_POINT_CLOUDS[i],
+          frames[i],
+          camera,
+          lightDir,
+          i === 0 ? 'base' : 'link',
+          i === 0 ? 1.08 : 0.82,
+        );
       }
 
-      for (const point of FLANGE_POINT_CLOUD) {
-        const world = vAdd(flange.t, mv(flange.R, point.p));
-        const normal = norm(mv(flange.R, point.n));
-        const proj = project(world, camera);
-        if (!proj) continue;
-        const lit = clamp(0.3 + 0.7 * Math.max(0, dot(normal, lightDir)));
-        dots.push({
-          x: proj.x,
-          y: proj.y,
-          z: proj.z,
-          r: 0,
-          kind: 'flange',
-          a: lit * 0.78,
-        });
-      }
-
-      // Perspective-style particle sizing: points on surfaces nearer to the
-      // camera are larger, while rear surfaces stay finer and more airy.
-      let nearestZ = Infinity;
-      let farthestZ = -Infinity;
-      for (const p of dots) {
-        if (p.z < nearestZ) nearestZ = p.z;
-        if (p.z > farthestZ) farthestZ = p.z;
-      }
-
-      const depthSpan = Math.max(farthestZ - nearestZ, 1e-6);
-      for (const p of dots) {
-        const near = clamp((farthestZ - p.z) / depthSpan);
-        const easedNear = near * near * (3 - 2 * near);
-
-        if (p.kind === 'flange') {
-          p.r = (0.32 + easedNear * 0.68) * 1.1;
-        } else if (p.kind === 'base') {
-          p.r = (0.4 + easedNear * 0.9) * 1.12;
-        } else {
-          p.r = (0.34 + easedNear * 0.82) * 1.1;
-        }
-      }
+      pushCloud(dots, FLANGE_POINT_CLOUD, flange, camera, lightDir, 'flange', 0.78);
 
       const baseAnchor = project(vAdd(state.base, [0, 0, -0.09]), camera);
-      fitPointCloud(dots, baseAnchor);
+      fitAnchoredDots(dots, baseAnchor, state.robotFit, {
+        screenX: 0.54,
+        screenY: 0.84,
+        left: 0.14,
+        right: 0.94,
+        top: 0.08,
+        bottom: 0.96,
+        smooth: 0.08,
+      });
 
-      dots.sort((a, b) => b.z - a.z);
-      for (const dotData of dots) {
-        ctx.beginPath();
-        ctx.arc(dotData.x, dotData.y, dotData.r, 0, PI * 2);
-        const alpha = dotData.kind === 'base'
-          ? 0.08 + dotData.a * 0.72
-          : 0.045 + dotData.a * 0.62;
-        ctx.fillStyle = `rgba(${BLACK}, ${alpha})`;
-        ctx.fill();
+      sizeAndDrawDots(dots);
+    }
+
+    function getBedSceneCamera(t, globalTime) {
+      const camMix = easeInOut(clamp((t - 0.2) / 0.5));
+      const eyeTop = [2.15, 1.55, 2.25];
+      const eyeBottom = [1.26, -0.3, 1.88];
+      const targetTop = [0, -0.02, 0];
+      const targetBottom = [0, -0.02, 0.03];
+      const eye = vLerp(eyeTop, eyeBottom, camMix);
+      const target = vLerp(targetTop, targetBottom, camMix);
+      eye[0] += 0.08 * Math.cos(globalTime * 0.23 + 0.4);
+      eye[2] += 0.05 * Math.sin(globalTime * 0.19 + 1.0);
+      return makeCamera(eye, target);
+    }
+
+
+    function nailActivityLevel(nail, testClock) {
+      const individual = Math.max(
+        pulse(testClock, nail.activationA, nail.widthA),
+        pulse(testClock, nail.activationB, nail.widthB),
+        pulse(testClock, nail.activationC, nail.widthC),
+        pulse(testClock, nail.activationD, nail.widthD),
+      );
+
+      const testPhases = Math.max(
+        nail.group === 0 ? pulse(testClock, 1.9, 0.42) : 0,
+        nail.group === 1 ? pulse(testClock, 3.8, 0.48) : 0,
+        nail.group === 2 ? pulse(testClock, 5.9, 0.52) : 0,
+        nail.group === 3 ? pulse(testClock, 7.4, 0.5) : 0,
+        nail.group === 4 ? pulse(testClock, 8.9, 0.4) : 0,
+      );
+
+      const flicker = Math.max(0, Math.sin(testClock * (2.8 + nail.group * 0.23) + nail.phase)) * 0.24;
+      const verify = pulse(testClock, 9.25 + nail.group * 0.07, 0.14) * (0.4 + 0.6 * rand2(nail.x, nail.z, 31));
+      return Math.max(individual, testPhases * (0.55 + flicker), verify);
+    }
+
+    function drawBedOfNailsScene(localTime, duration, globalTime) {
+      const t = clamp(localTime / duration);
+      const lowerT = easeInOut(clamp(t / 0.28));
+      const nailsT = easeInOut(clamp((t - 0.22) / 0.22));
+      const testT = clamp((t - 0.42) / 0.58);
+
+      const boardY = lerp(0.4, 0.13, lowerT);
+      const pinTipY = lerp(-0.13, boardY - 0.018, nailsT);
+      const camera = getBedSceneCamera(t, globalTime);
+      const lightDir = norm([0.62, 1.0, 0.4]);
+      const dots = [];
+
+      const boardFrame = { R: IDENTITY, t: [0, boardY, 0] };
+      pushCloud(dots, PCB_BOARD_CLOUD, boardFrame, camera, lightDir, 'pcb', 0.8);
+      for (const cloud of PCB_COMPONENT_CLOUDS) {
+        pushCloud(dots, cloud, boardFrame, camera, lightDir, 'pcb', 0.82);
       }
+      for (const cloud of PCB_DETAIL_CLOUDS) {
+        pushCloud(dots, cloud, boardFrame, camera, lightDir, 'pcb-detail', 0.68);
+      }
+      for (const cloud of PAD_MARKER_CLOUDS) {
+        pushCloud(dots, cloud, boardFrame, camera, lightDir, 'pcb-detail', 0.66);
+      }
+
+      for (const cloud of FIXTURE_FRAME_CLOUDS) {
+        pushCloud(dots, cloud, null, camera, lightDir, 'fixture', 0.55);
+      }
+
+      const activityTime = testT * 10.4;
+      for (const nail of NAIL_LAYOUT) {
+        const activity = nailActivityLevel(nail, activityTime);
+        const active = activity > 0.24;
+        const shaftCloud = buildCylinder([nail.x, -0.28, nail.z], [nail.x, pinTipY, nail.z], 0.015, 6, 10, 2);
+        const headCloud = buildCylinder([nail.x, pinTipY - 0.012, nail.z], [nail.x, pinTipY + 0.006, nail.z], 0.024, 3, 10, 2);
+        const nailCloud = [
+          ...decimate(shaftCloud, active ? 1 : 2, nail.seq % 2),
+          ...decimate(headCloud, 1),
+        ];
+        pushCloud(
+          dots,
+          nailCloud,
+          null,
+          camera,
+          lightDir,
+          active ? 'pin-active' : 'pin',
+          active ? 1.0 + activity * 0.5 : 0.78,
+          active ? 'blue' : 'black',
+        );
+      }
+
+      const fixtureAnchor = project([0, -0.19, 0], camera);
+      fitAnchoredDots(dots, fixtureAnchor, state.bedFit, {
+        screenX: 0.57,
+        screenY: 0.72,
+        left: 0.1,
+        right: 0.96,
+        top: 0.07,
+        bottom: 0.97,
+        smooth: 0.1,
+      });
+
+      sizeAndDrawDots(dots);
     }
 
     function render(timeSeconds) {
       resize();
       ctx.clearRect(0, 0, state.width, state.height);
-      drawPointCloud(timeSeconds);
+
+      const loopTime = state.reducedMotion ? 0 : (timeSeconds % LOOP_DURATION);
+
+      if (loopTime < ROBOT_SCENE_DURATION) {
+        setScene('robot');
+        drawRobotScene(timeSeconds);
+      } else {
+        setScene('bed');
+        drawBedOfNailsScene(loopTime - ROBOT_SCENE_DURATION, BED_SCENE_DURATION, timeSeconds);
+      }
     }
 
     function frame(now) {
