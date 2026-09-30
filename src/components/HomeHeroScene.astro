@@ -42,9 +42,27 @@
     const BLUE = '42, 118, 255';
     const PI = Math.PI;
 
-    const ROBOT_SCENE_DURATION = 5.0;
+    const ROBOT_SCENE_DURATION = 20.0;
     const BED_SCENE_DURATION = 10.0;
     const LOOP_DURATION = ROBOT_SCENE_DURATION + BED_SCENE_DURATION;
+
+    // Keep inverse-kinematics work below the display refresh rate. Rendering
+    // still runs on requestAnimationFrame and interpolates the joint state.
+    const SIMULATION_HZ = 30;
+    const SIMULATION_DT = 1 / SIMULATION_HZ;
+    const IK_ITERATIONS = 3;
+
+    // Heart registration is intentionally slow and deliberate, matching the
+    // real impedance-controlled motion rather than a decorative robot demo.
+    const MAX_JOINT_SPEED_RAD_S = 0.24;
+    const SCANNER_TOOL_LENGTH = 0.17;
+    const CONTACT_CLEARANCE = 0.003;
+    const PROBE_RETRACT_DISTANCE = 0.075;
+
+    // Canvas particles are rendered in a small number of depth/alpha batches
+    // rather than one beginPath()/fill() pair per particle.
+    const DEPTH_BUCKETS = 5;
+    const ALPHA_BUCKETS = 6;
 
     const clamp = (v, min = 0, max = 1) => Math.min(max, Math.max(min, v));
     const lerp = (a, b, t) => a + (b - a) * t;
@@ -218,6 +236,67 @@
       return q;
     }
 
+
+    function solveProbeTipIK(q, targetTipPosition, targetDirection, base, iterations = 5) {
+      const errorFor = (qq) => {
+        const { flange } = fk(qq, base);
+        const toolZ = [flange.R[2], flange.R[5], flange.R[8]];
+        const tipPosition = vAdd(
+          flange.t,
+          vScale(toolZ, SCANNER_TOOL_LENGTH),
+        );
+
+        const posError = vSub(targetTipPosition, tipPosition);
+
+        // Keep a weak downward-orientation preference, but prioritise the tip
+        // position so the probe actually reaches the specimen.
+        const dirError = vScale(vSub(targetDirection, toolZ), 0.03);
+
+        return [
+          posError[0], posError[1], posError[2],
+          dirError[0], dirError[1], dirError[2],
+        ];
+      };
+
+      for (let iter = 0; iter < iterations; iter++) {
+        const e = errorFor(q);
+        const J = [];
+        const h = 1e-3;
+
+        for (let j = 0; j < JOINTS.length; j++) {
+          const q2 = q.slice();
+          q2[j] += h;
+          const e2 = errorFor(q2);
+          J.push(e2.map((value, i) => (value - e[i]) / h));
+        }
+
+        const A = [];
+        const lambda = 0.08;
+        for (let r = 0; r < 6; r++) {
+          A.push([]);
+          for (let c = 0; c < 6; c++) {
+            let sum = 0;
+            for (let j = 0; j < JOINTS.length; j++) sum += J[j][r] * J[j][c];
+            A[r].push(sum + (r === c ? lambda * lambda : 0));
+          }
+        }
+
+        const y = solveLinear6(A, e);
+        for (let j = 0; j < JOINTS.length; j++) {
+          let step = 0;
+          for (let r = 0; r < 6; r++) step += J[j][r] * y[r];
+
+          q[j] = clamp(
+            q[j] + clamp(-step + 0.01 * (REST_Q[j] - q[j]), -0.12, 0.12),
+            -JOINTS[j].limit * 0.9,
+            JOINTS[j].limit * 0.9,
+          );
+        }
+      }
+
+      return q;
+    }
+
     function buildCylinder(start, end, radius, rings = 12, around = 18, capDensity = 6) {
       const axis = vSub(end, start);
       const w = norm(axis);
@@ -346,6 +425,149 @@
       ...buildCylinder([0, 0, 0.018], [0, 0, 0.03], 0.022, 4, 10, 3),
     ], 2);
 
+    const FLANGE_POINT_CLOUD_DENSE = [
+      ...buildCylinder([0, 0, -0.012], [0, 0, 0.018], 0.04, 10, 18, 4),
+      ...buildCylinder([0, 0, 0.018], [0, 0, 0.03], 0.022, 7, 14, 4),
+    ];
+
+
+    // ---------------------------------------------------------------------
+    // HEART SURFACE REGISTRATION SCENE
+    // ---------------------------------------------------------------------
+    // A compact height-field heart model. It is deliberately stylised rather
+    // than anatomical CAD: the visual cue is the important part here — an
+    // iiwa probing a curved tissue surface, aligning to the local normal and
+    // leaving registered surface/normal samples behind.
+    const HEART_CENTER = [0.34, 0.0585, 0.14];
+    const HEART_SCALE_X = 0.056;
+    const HEART_SCALE_Z = 0.051;
+    const HEART_BASE_Y = 0.035;
+
+    function heartOutline(theta) {
+      const s = Math.sin(theta);
+      const x = (16 * s * s * s) / 16;
+      const z = (
+        13 * Math.cos(theta)
+        - 5 * Math.cos(2 * theta)
+        - 2 * Math.cos(3 * theta)
+        - Math.cos(4 * theta)
+      ) / 17;
+      return [x, z];
+    }
+
+    function heartSurfacePoint(theta, radial) {
+      const [ox, oz] = heartOutline(theta);
+      const r = clamp(radial, 0.04, 1);
+      const x = HEART_CENTER[0] + HEART_SCALE_X * ox * r;
+      const z = HEART_CENTER[2] + HEART_SCALE_Z * oz * r;
+
+      // Convex tissue surface with a mild central groove and asymmetric
+      // anatomical-looking undulation.
+      const dome = 0.055 * Math.pow(Math.max(0, 1 - r * r), 0.62);
+      const groove = -0.010 * Math.exp(-Math.pow((x - HEART_CENTER[0]) / 0.025, 2))
+        * (0.35 + 0.65 * r);
+      const texture =
+        0.0045 * Math.sin(theta * 3.0 + r * 2.2)
+        + 0.0035 * Math.cos(theta * 2.0 - r * 4.0);
+
+      return [
+        x,
+        HEART_CENTER[1] + HEART_BASE_Y + dome + groove + texture,
+        z,
+      ];
+    }
+
+    function heartSurfaceNormal(theta, radial) {
+      const h = 1e-3;
+      const pThetaA = heartSurfacePoint(theta - h, radial);
+      const pThetaB = heartSurfacePoint(theta + h, radial);
+      const pRadialA = heartSurfacePoint(theta, Math.max(0.04, radial - h));
+      const pRadialB = heartSurfacePoint(theta, Math.min(1, radial + h));
+
+      const tangentTheta = vSub(pThetaB, pThetaA);
+      const tangentRadial = vSub(pRadialB, pRadialA);
+      let n = norm(cross(tangentRadial, tangentTheta));
+      if (n[1] < 0) n = vScale(n, -1);
+      return n;
+    }
+
+    function buildHeartSurface(radialSteps = 12, around = 34) {
+      const points = [];
+
+      for (let ri = 1; ri <= radialSteps; ri++) {
+        const radial = ri / radialSteps;
+        const count = Math.max(12, Math.round(around * (0.35 + 0.65 * radial)));
+
+        for (let ti = 0; ti < count; ti++) {
+          const theta = (ti / count) * PI * 2 + (ri % 2) * (PI / count);
+          points.push({
+            p: heartSurfacePoint(theta, radial),
+            n: heartSurfaceNormal(theta, radial),
+          });
+        }
+      }
+
+      // A sparse lower rim gives the point cloud some visible thickness.
+      for (let ti = 0; ti < around; ti++) {
+        const theta = (ti / around) * PI * 2;
+        const top = heartSurfacePoint(theta, 1);
+        const outward = heartSurfaceNormal(theta, 1);
+        for (let layer = 1; layer <= 3; layer++) {
+          points.push({
+            p: [top[0], top[1] - layer * 0.028, top[2]],
+            n: outward,
+          });
+        }
+      }
+
+      return points;
+    }
+
+    const HEART_SURFACE_CLOUD = buildHeartSurface();
+    const HEART_SURFACE_CLOUD_DENSE = buildHeartSurface(24, 68);
+
+    const HEART_TRAY_CLOUD = decimate(
+      buildBox([HEART_CENTER[0], HEART_CENTER[1] - 0.012, HEART_CENTER[2]], 0.171, 0.020, 0.152, 8, 2, 7),
+      3,
+    );
+
+    // Simple probe visual mounted along flange tool-Z. The exact experimental
+    // end-effector is intentionally abstracted; the contact behaviour matters
+    // more than reproducing every bracket and sensor.
+    const SCANNER_POINT_CLOUD = decimate([
+      ...buildCylinder([0, 0, 0.025], [0, 0, 0.095], 0.022, 5, 12, 2),
+      ...buildCylinder([0, 0, 0.095], [0, 0, 0.145], 0.010, 4, 10, 2),
+      ...buildCylinder([0, 0, 0.145], [0, 0, 0.17], 0.0045, 3, 9, 1),
+    ], 2);
+
+    const SCANNER_POINT_CLOUD_DENSE = [
+      ...buildCylinder([0, 0, 0.025], [0, 0, 0.095], 0.022, 10, 20, 3),
+      ...buildCylinder([0, 0, 0.095], [0, 0, 0.145], 0.010, 8, 18, 3),
+      ...buildCylinder([0, 0, 0.145], [0, 0, 0.17], 0.0045, 6, 14, 2),
+    ];
+
+    // Probe ordering is intentionally spatially coherent so the arm traverses
+    // the surface rather than jumping around it.
+    // A single scene now registers only a handful of nearby locations. The
+    // real system moves cautiously between contacts; trying to visit fourteen
+    // points in a few seconds made the simulated arm look unnaturally frantic.
+    const HEART_PROBE_UV = [
+      [0.10, 0.28],
+      [0.18, 0.36],
+      [0.27, 0.44],
+      [0.37, 0.38],
+      [0.48, 0.30],
+      [0.58, 0.36],
+    ];
+
+    const HEART_PROBES = HEART_PROBE_UV.map(([u, radial]) => {
+      const theta = u * PI * 2;
+      return {
+        p: heartSurfacePoint(theta, radial),
+        n: heartSurfaceNormal(theta, radial),
+      };
+    });
+
     const PCB_BOARD_CLOUD = decimate(buildBox([0, 0, 0], 1.45, 0.03, 1.0, 18, 3, 14), 2);
 
     const PCB_COMPONENT_CLOUDS = [
@@ -448,8 +670,15 @@
       visible: true,
       reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
       raf: 0,
-      q: REST_Q.slice(),
       base: [0.02, -0.62, 0],
+
+      // IK/simulation state is updated at SIMULATION_HZ; qRender is smoothly
+      // interpolated at display refresh rate.
+      qSim: REST_Q.slice(),
+      qRender: REST_Q.slice(),
+      nextSimulationTime: null,
+      lastFrameMs: null,
+
       robotFit: { scale: 0 },
       bedFit: { scale: 0 },
       currentScene: '',
@@ -460,8 +689,12 @@
       state.reducedMotion = event.matches;
       if (state.reducedMotion) {
         stop();
-        render(0);
+        state.qSim = REST_Q.slice();
+        state.qRender = REST_Q.slice();
+        render(0, 0);
       } else {
+        state.nextSimulationTime = null;
+        state.lastFrameMs = null;
         sync();
       }
     };
@@ -472,19 +705,23 @@
       const dpr = Math.min(window.devicePixelRatio || 1, DPR_CAP);
       const width = Math.max(1, Math.round(rect.width * dpr));
       const height = Math.max(1, Math.round(rect.height * dpr));
+
       if (canvas.width !== width || canvas.height !== height) {
         canvas.width = width;
         canvas.height = height;
       }
+
       state.width = rect.width;
       state.height = rect.height;
       state.dpr = dpr;
+      state.robotFit.scale = 0;
+      state.bedFit.scale = 0;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
 
     const resizeObserver = new ResizeObserver(() => {
       resize();
-      render(performance.now() * 0.001);
+      render(performance.now() * 0.001, 0);
     });
     resizeObserver.observe(root);
 
@@ -502,8 +739,30 @@
     function setScene(sceneName) {
       if (state.currentScene === sceneName) return;
       state.currentScene = sceneName;
-      if (sceneName === 'robot') state.robotFit.scale = 0;
-      if (sceneName === 'bed') state.bedFit.scale = 0;
+
+      if (sceneName === 'robot') {
+        state.robotFit.scale = 0;
+
+        // Start already settled at the first probe pose. This avoids the large,
+        // non-physical transient from REST_Q when the scene first appears.
+        const initialMotion = heartProbeMotion(0, ROBOT_SCENE_DURATION);
+        const initialQ = solveProbeTipIK(
+          REST_Q.slice(),
+          initialMotion.target,
+          initialMotion.targetDirection,
+          state.base,
+          18,
+        );
+
+        state.qSim = initialQ.slice();
+        state.qRender = initialQ.slice();
+        state.nextSimulationTime = null;
+      }
+
+      if (sceneName === 'bed') {
+        state.bedFit.scale = 0;
+        state.nextSimulationTime = null;
+      }
     }
 
     function makeCamera(eye, target) {
@@ -523,46 +782,63 @@
       return { x: x / z, y: -y / z, z };
     }
 
-    function fitAnchoredDots(dots, anchor, fitState, opts = {}) {
-      if (!dots.length || !anchor) return;
-
-      let minX = Infinity;
-      let maxX = -Infinity;
-      let minY = Infinity;
-      let maxY = -Infinity;
-      for (const p of dots) {
-        if (p.x < minX) minX = p.x;
-        if (p.x > maxX) maxX = p.x;
-        if (p.y < minY) minY = p.y;
-        if (p.y > maxY) maxY = p.y;
-      }
+    function fitAnchoredDots(dots, anchor, fitState, opts = {}, measureDots = dots) {
+      if (!dots.length || !anchor || !measureDots.length) return;
 
       const screenAnchorX = state.width * (opts.screenX ?? 0.54);
       const screenAnchorY = state.height * (opts.screenY ?? 0.84);
-      const left = state.width * (opts.left ?? 0.14);
-      const right = state.width * (opts.right ?? 0.94);
-      const top = state.height * (opts.top ?? 0.08);
-      const bottom = state.height * (opts.bottom ?? 0.96);
 
-      const spanLeft = Math.max(anchor.x - minX, 1e-6);
-      const spanRight = Math.max(maxX - anchor.x, 1e-6);
-      const spanUp = Math.max(anchor.y - minY, 1e-6);
-      const spanDown = Math.max(maxY - anchor.y, 1e-6);
+      // Calculate the scene scale only once after resize/scene entry. Camera
+      // motion may move the projected anchor, but the scale remains fixed.
+      if (!fitState.scale) {
+        let minX = Infinity;
+        let maxX = -Infinity;
+        let minY = Infinity;
+        let maxY = -Infinity;
 
-      const targetScale = Math.min(
-        (screenAnchorX - left) / spanLeft,
-        (right - screenAnchorX) / spanRight,
-        (screenAnchorY - top) / spanUp,
-        (bottom - screenAnchorY) / spanDown,
-      );
+        for (const p of measureDots) {
+          if (p.x < minX) minX = p.x;
+          if (p.x > maxX) maxX = p.x;
+          if (p.y < minY) minY = p.y;
+          if (p.y > maxY) maxY = p.y;
+        }
 
-      const smoothAmount = opts.smooth ?? 0.08;
-      if (!fitState.scale) fitState.scale = targetScale;
-      else fitState.scale = lerp(fitState.scale, targetScale, smoothAmount);
+        const left = state.width * (opts.left ?? 0.14);
+        const right = state.width * (opts.right ?? 0.94);
+        const top = state.height * (opts.top ?? 0.08);
+        const bottom = state.height * (opts.bottom ?? 0.96);
+
+        const spanLeft = Math.max(anchor.x - minX, 1e-6);
+        const spanRight = Math.max(maxX - anchor.x, 1e-6);
+        const spanUp = Math.max(anchor.y - minY, 1e-6);
+        const spanDown = Math.max(maxY - anchor.y, 1e-6);
+
+        fitState.scale = Math.min(
+          (screenAnchorX - left) / spanLeft,
+          (right - screenAnchorX) / spanRight,
+          (screenAnchorY - top) / spanUp,
+          (bottom - screenAnchorY) / spanDown,
+        ) * 0.96;
+      }
 
       for (const p of dots) {
         p.x = screenAnchorX + (p.x - anchor.x) * fitState.scale;
         p.y = screenAnchorY + (p.y - anchor.y) * fitState.scale;
+      }
+    }
+
+    function applyHeartProjection(dots, zoomMix) {
+      // project() returns normalised perspective coordinates (x/z, y/z).
+      // Map those directly to pixels with a controlled focal length instead of
+      // re-fitting animated geometry every frame.
+      const minDim = Math.min(state.width, state.height);
+      const focal = minDim * lerp(0.76, 1.02, zoomMix);
+      const cx = state.width * lerp(0.52, 0.50, zoomMix);
+      const cy = state.height * lerp(0.54, 0.63, zoomMix);
+
+      for (const p of dots) {
+        p.x = cx + p.x * focal;
+        p.y = cy + p.y * focal;
       }
     }
 
@@ -589,6 +865,8 @@
     }
 
     function sizeAndDrawDots(dots) {
+      if (!dots.length) return;
+
       let nearestZ = Infinity;
       let farthestZ = -Infinity;
       for (const p of dots) {
@@ -597,14 +875,25 @@
       }
       const depthSpan = Math.max(farthestZ - nearestZ, 1e-6);
 
+      const batches = {
+        black: Array.from({ length: DEPTH_BUCKETS }, () =>
+          Array.from({ length: ALPHA_BUCKETS }, () => ({ points: [], alphaSum: 0 }))),
+        blue: Array.from({ length: DEPTH_BUCKETS }, () =>
+          Array.from({ length: ALPHA_BUCKETS }, () => ({ points: [], alphaSum: 0 }))),
+      };
+
       for (const p of dots) {
         const near = clamp((farthestZ - p.z) / depthSpan);
         const easedNear = smooth(near);
 
-        if (p.kind === 'flange') {
+        if (p.kind === 'flange' || p.kind === 'scanner') {
           p.r = (0.32 + easedNear * 0.68) * 1.1;
         } else if (p.kind === 'base') {
           p.r = (0.4 + easedNear * 0.9) * 1.12;
+        } else if (p.kind === 'registration') {
+          p.r = 0.62 + easedNear * 1.0;
+        } else if (p.kind === 'heart') {
+          p.r = 0.38 + easedNear * 0.78;
         } else if (p.kind === 'pin-active') {
           p.r = 0.56 + easedNear * 1.08;
         } else if (p.kind === 'pin') {
@@ -618,74 +907,305 @@
         } else {
           p.r = (0.34 + easedNear * 0.82) * 1.1;
         }
-      }
-
-      dots.sort((a, b) => b.z - a.z);
-      for (const dotData of dots) {
-        ctx.beginPath();
-        ctx.arc(dotData.x, dotData.y, dotData.r, 0, PI * 2);
 
         let alpha;
-        if (dotData.kind === 'base') alpha = 0.08 + dotData.a * 0.72;
-        else if (dotData.kind === 'pin-active') alpha = 0.16 + dotData.a * 0.92;
-        else if (dotData.kind === 'pin') alpha = 0.085 + dotData.a * 0.74;
-        else if (dotData.kind === 'pcb-detail') alpha = 0.05 + dotData.a * 0.6;
-        else alpha = 0.045 + dotData.a * 0.62;
+        if (p.kind === 'base') alpha = 0.08 + p.a * 0.72;
+        else if (p.kind === 'registration') alpha = 0.22 + p.a * 0.76;
+        else if (p.kind === 'heart') alpha = 0.06 + p.a * 0.64;
+        else if (p.kind === 'pin-active') alpha = 0.16 + p.a * 0.84;
+        else if (p.kind === 'pin') alpha = 0.085 + p.a * 0.74;
+        else if (p.kind === 'pcb-detail') alpha = 0.05 + p.a * 0.6;
+        else alpha = 0.045 + p.a * 0.62;
+        alpha = clamp(alpha, 0, 1);
 
-        const rgb = dotData.color === 'blue' ? BLUE : BLACK;
-        ctx.fillStyle = `rgba(${rgb}, ${alpha})`;
-        ctx.fill();
-      }
-    }
-
-    function targetAt(time) {
-      return [
-        0.29 + 0.22 * Math.cos(time * 0.8),
-        0.6 + 0.09 * Math.sin(time * 1.1),
-        0.12 + 0.22 * Math.sin(time * 0.55),
-      ];
-    }
-
-    function jointIdleOffsets(time) {
-      return [
-        0.11 * Math.sin(time * 0.46 + 0.2),
-        0.08 * Math.sin(time * 0.63 + 1.1),
-        0.13 * Math.sin(time * 0.52 + 2.0),
-        0.09 * Math.sin(time * 0.71 + 0.7),
-        0.11 * Math.sin(time * 0.58 + 2.7),
-        0.08 * Math.sin(time * 0.67 + 1.9),
-        0.12 * Math.sin(time * 0.49 + 3.4),
-      ];
-    }
-
-    function getRobotCamera(time) {
-      const eye = [
-        2.02 + 0.11 * Math.cos(time * 0.23),
-        1.34 + 0.06 * Math.sin(time * 0.19),
-        2.46 + 0.1 * Math.sin(time * 0.17),
-      ];
-      const target = [0.04, 0.36, 0.12];
-      return makeCamera(eye, target);
-    }
-
-    function drawRobotScene(time) {
-      const camera = getRobotCamera(time);
-      const lightDir = norm([0.7, 1.0, 0.5]);
-      const target = targetAt(time);
-      const targetDir = norm(vSub([0.0, 0.26, 0.08], target));
-
-      const qSolved = solveIK(state.q.slice(), target, targetDir, state.base, state.reducedMotion ? 0 : 4);
-      const idleOffsets = jointIdleOffsets(time);
-      for (let i = 0; i < state.q.length; i++) {
-        const animatedTarget = clamp(
-          qSolved[i] + idleOffsets[i],
-          -JOINTS[i].limit * 0.9,
-          JOINTS[i].limit * 0.9,
+        const depthIndex = Math.min(
+          DEPTH_BUCKETS - 1,
+          Math.floor(near * DEPTH_BUCKETS),
         );
-        state.q[i] = lerp(state.q[i], animatedTarget, 0.22);
+        const alphaIndex = Math.min(
+          ALPHA_BUCKETS - 1,
+          Math.floor(alpha * ALPHA_BUCKETS),
+        );
+
+        const colorKey = p.color === 'blue' ? 'blue' : 'black';
+        const batch = batches[colorKey][depthIndex][alphaIndex];
+        batch.points.push(p);
+        batch.alphaSum += alpha;
       }
 
-      const { frames, flange } = fk(state.q, state.base);
+      // Far-to-near at bucket resolution; blue registration data is drawn after
+      // the structural cloud at each depth so the measured surface stays legible.
+      for (let depthIndex = 0; depthIndex < DEPTH_BUCKETS; depthIndex++) {
+        for (const colorKey of ['black', 'blue']) {
+          const rgb = colorKey === 'blue' ? BLUE : BLACK;
+
+          for (let alphaIndex = 0; alphaIndex < ALPHA_BUCKETS; alphaIndex++) {
+            const batch = batches[colorKey][depthIndex][alphaIndex];
+            if (!batch.points.length) continue;
+
+            const alpha = batch.alphaSum / batch.points.length;
+            ctx.fillStyle = `rgba(${rgb}, ${alpha})`;
+            ctx.beginPath();
+
+            for (const p of batch.points) {
+              ctx.moveTo(p.x + p.r, p.y);
+              ctx.arc(p.x, p.y, p.r, 0, PI * 2);
+            }
+
+            ctx.fill();
+          }
+        }
+      }
+    }
+
+    function getHeartSceneCamera(localTime, duration, globalTime, motion) {
+      // Keep the camera wide while the first probe approaches. Once the first
+      // contact has been made, transition to a fixed close-up viewpoint based
+      // on the real videos rather than orbiting with the local surface normal.
+      const zoomMix = easeInOut(clamp((localTime - 3.8) / 2.8));
+
+      // Slightly elevated establishing view: whole robot, tiny specimen.
+      const wideEye = [
+        1.22 + 0.020 * Math.cos(globalTime * 0.14),
+        1.20 + 0.014 * Math.sin(globalTime * 0.12),
+        1.64 + 0.016 * Math.sin(globalTime * 0.13),
+      ];
+      const wideTarget = [0.12, 0.13, 0.10];
+
+      // Fixed oblique close-up. The tool enters from above/right and the heart
+      // remains low in the frame, matching the character of the reference.
+      const closeEye = [
+        HEART_CENTER[0] + 0.40,
+        HEART_CENTER[1] + 0.34,
+        HEART_CENTER[2] + 0.52,
+      ];
+      const closeTarget = [
+        HEART_CENTER[0],
+        HEART_CENTER[1] + 0.018,
+        HEART_CENTER[2],
+      ];
+
+      const eye = vLerp(wideEye, closeEye, zoomMix);
+      const target = vLerp(wideTarget, closeTarget, zoomMix);
+
+      return {
+        camera: makeCamera(eye, target),
+        zoomMix,
+      };
+    }
+
+    function heartProbeMotion(localTime, duration) {
+      const count = HEART_PROBES.length;
+      const segmentDuration = duration / count;
+      const rawSegment = clamp(localTime / segmentDuration, 0, count - 1e-6);
+      const index = Math.min(count - 1, Math.floor(rawSegment));
+      const phase = rawSegment - index;
+
+      const current = HEART_PROBES[index];
+      const previous = HEART_PROBES[Math.max(0, index - 1)];
+
+      // These are now explicit probe-tip targets. Contact means the actual tip
+      // is commanded to the tissue point itself; retract is directly above it.
+      const approachAxis = [0, 1, 0];
+
+      const previousContact = previous.p;
+      const previousRetract = vAdd(
+        previous.p,
+        vScale(approachAxis, PROBE_RETRACT_DISTANCE),
+      );
+      const currentRetract = vAdd(
+        current.p,
+        vScale(approachAxis, PROBE_RETRACT_DISTANCE),
+      );
+      const currentContact = current.p;
+
+      // The first probe starts already in contact and simply settles. Thereafter
+      // each point gets a long hold, a modest retract, a slow local traverse,
+      // a controlled approach and another contact dwell.
+      if (index === 0) {
+        let target;
+        if (phase < 0.28) {
+          target = currentRetract;
+        } else if (phase < 0.78) {
+          const s = easeInOut((phase - 0.28) / 0.50);
+          target = vLerp(currentRetract, currentContact, s);
+        } else {
+          target = currentContact;
+        }
+
+        return {
+          index,
+          phase,
+          target,
+          targetDirection: [0, -1, 0],
+          registeredCount: phase >= 0.78 ? 1 : 0,
+        };
+      }
+
+      let target;
+      let directionNormal;
+
+      if (phase < 0.25) {
+        // Hold the previous contact before moving away.
+        target = previousContact;
+        directionNormal = previous.n;
+      } else if (phase < 0.42) {
+        // Small normal-direction retract.
+        const s = easeInOut((phase - 0.25) / 0.17);
+        target = vLerp(previousContact, previousRetract, s);
+        directionNormal = previous.n;
+      } else if (phase < 0.67) {
+        // Translate between neighbouring registration locations while clear.
+        const s = easeInOut((phase - 0.42) / 0.25);
+        target = vLerp(previousRetract, currentRetract, s);
+        directionNormal = norm(vLerp(previous.n, current.n, s));
+      } else if (phase < 0.87) {
+        // Controlled approach along the new local surface normal.
+        const s = easeInOut((phase - 0.67) / 0.20);
+        target = vLerp(currentRetract, currentContact, s);
+        directionNormal = current.n;
+      } else {
+        // Contact / settling dwell.
+        target = currentContact;
+        directionNormal = current.n;
+      }
+
+      return {
+        index,
+        phase,
+        target,
+        targetDirection: [0, -1, 0],
+        registeredCount: index + (phase >= 0.87 ? 1 : 0),
+      };
+    }
+
+    function stepRobotSimulation(localTime, duration) {
+      const motion = heartProbeMotion(localTime, duration);
+      const qSolved = solveProbeTipIK(
+        state.qSim.slice(),
+        motion.target,
+        motion.targetDirection,
+        state.base,
+        5,
+      );
+
+      const maxJointStep = MAX_JOINT_SPEED_RAD_S * SIMULATION_DT;
+      for (let i = 0; i < state.qSim.length; i++) {
+        const delta = clamp(
+          qSolved[i] - state.qSim[i],
+          -maxJointStep,
+          maxJointStep,
+        );
+        state.qSim[i] += delta;
+      }
+    }
+
+    function updateRobotSimulation(localTime, duration) {
+      if (state.reducedMotion) return;
+
+      if (state.nextSimulationTime === null) {
+        stepRobotSimulation(localTime, duration);
+        state.nextSimulationTime = localTime + SIMULATION_DT;
+        return;
+      }
+
+      let steps = 0;
+      while (localTime >= state.nextSimulationTime && steps < 2) {
+        stepRobotSimulation(state.nextSimulationTime, duration);
+        state.nextSimulationTime += SIMULATION_DT;
+        steps++;
+      }
+
+      if (localTime - state.nextSimulationTime > SIMULATION_DT * 2) {
+        state.nextSimulationTime = localTime + SIMULATION_DT;
+      }
+    }
+
+    function updateRenderJoints(deltaSeconds) {
+      if (state.reducedMotion) {
+        state.qRender = REST_Q.slice();
+        return;
+      }
+
+      const blend = 1 - Math.exp(-10 * Math.max(0, deltaSeconds));
+      for (let i = 0; i < state.qRender.length; i++) {
+        state.qRender[i] = lerp(state.qRender[i], state.qSim[i], blend);
+      }
+    }
+
+    function pushRegistrationPoint(dots, probe, camera, intensity = 1) {
+      const tangentA = norm(cross(probe.n, [0, 1, 0]));
+      const tangent = len(tangentA) > 1e-4 ? tangentA : [1, 0, 0];
+      const bitangent = norm(cross(probe.n, tangent));
+
+      const samples = [
+        [0, 0],
+        [0.0045, 0],
+        [-0.0045, 0],
+        [0, 0.0045],
+        [0, -0.0045],
+      ];
+
+      for (const [u, v] of samples) {
+        const p = vAdd(
+          probe.p,
+          vAdd(
+            vScale(tangent, u),
+            vScale(bitangent, v),
+          ),
+        );
+        const proj = project(p, camera);
+        if (!proj) continue;
+        dots.push({
+          x: proj.x,
+          y: proj.y,
+          z: proj.z,
+          r: 0,
+          kind: 'registration',
+          color: 'blue',
+          a: intensity,
+        });
+      }
+    }
+
+    function pushProbeContactBridge(dots, flange, probe, camera, lightDir) {
+      const toolZ = [flange.R[2], flange.R[5], flange.R[8]];
+      const renderedTip = vAdd(
+        flange.t,
+        vScale(toolZ, SCANNER_TOOL_LENGTH),
+      );
+
+      const gap = len(vSub(probe.p, renderedTip));
+      if (gap > 0.035) return;
+
+      const bridge = buildCylinder(
+        renderedTip,
+        probe.p,
+        0.0045,
+        3,
+        10,
+        1,
+      );
+
+      pushCloud(
+        dots,
+        bridge,
+        null,
+        camera,
+        lightDir,
+        'scanner',
+        0.95,
+      );
+    }
+
+    function drawHeartRegistrationScene(localTime, duration, globalTime, deltaSeconds) {
+      updateRobotSimulation(localTime, duration);
+      updateRenderJoints(deltaSeconds);
+
+      const motion = heartProbeMotion(localTime, duration);
+      const { camera, zoomMix } = getHeartSceneCamera(localTime, duration, globalTime, motion);
+      const lightDir = norm([0.58, 1.0, 0.5]);
+      const { frames, flange } = fk(state.qRender, state.base);
       const dots = [];
 
       for (let i = 0; i < LINK_POINT_CLOUDS.length; i++) {
@@ -701,18 +1221,74 @@
       }
 
       pushCloud(dots, FLANGE_POINT_CLOUD, flange, camera, lightDir, 'flange', 0.78);
+      pushCloud(dots, SCANNER_POINT_CLOUD, flange, camera, lightDir, 'scanner', 0.9);
 
-      const baseAnchor = project(vAdd(state.base, [0, 0, -0.09]), camera);
-      fitAnchoredDots(dots, baseAnchor, state.robotFit, {
-        screenX: 0.54,
-        screenY: 0.84,
-        left: 0.14,
-        right: 0.94,
-        top: 0.08,
-        bottom: 0.96,
-        smooth: 0.08,
-      });
+      const contactDwell =
+        (motion.index === 0 && motion.phase >= 0.78)
+        || (motion.index > 0 && motion.phase >= 0.87);
 
+      if (contactDwell) {
+        pushProbeContactBridge(
+          dots,
+          flange,
+          HEART_PROBES[motion.index],
+          camera,
+          lightDir,
+        );
+      }
+
+      // Add detail progressively as the camera moves in.
+      if (zoomMix > 0.15) {
+        const denseMix = clamp((zoomMix - 0.15) / 0.85);
+        pushCloud(
+          dots,
+          FLANGE_POINT_CLOUD_DENSE,
+          flange,
+          camera,
+          lightDir,
+          'flange',
+          0.12 + denseMix * 0.32,
+        );
+        pushCloud(
+          dots,
+          SCANNER_POINT_CLOUD_DENSE,
+          flange,
+          camera,
+          lightDir,
+          'scanner',
+          0.12 + denseMix * 0.38,
+        );
+      }
+
+      pushCloud(dots, HEART_SURFACE_CLOUD, null, camera, lightDir, 'heart', 0.88);
+      pushCloud(dots, HEART_TRAY_CLOUD, null, camera, lightDir, 'fixture', 0.30);
+
+      if (zoomMix > 0.12) {
+        const denseMix = clamp((zoomMix - 0.12) / 0.88);
+        pushCloud(
+          dots,
+          HEART_SURFACE_CLOUD_DENSE,
+          null,
+          camera,
+          lightDir,
+          'heart',
+          0.10 + denseMix * 0.42,
+        );
+      }
+
+      // Compact blue registration points only. No surface-normal lines.
+      for (let i = 0; i < motion.registeredCount; i++) {
+        pushRegistrationPoint(dots, HEART_PROBES[i], camera, 0.82);
+      }
+
+      if (
+        (motion.index === 0 && motion.phase >= 0.72)
+        || (motion.index > 0 && motion.phase >= 0.78)
+      ) {
+        pushRegistrationPoint(dots, HEART_PROBES[motion.index], camera, 1.0);
+      }
+
+      applyHeartProjection(dots, zoomMix);
       sizeAndDrawDots(dots);
     }
 
@@ -815,35 +1391,54 @@
       sizeAndDrawDots(dots);
     }
 
-    function render(timeSeconds) {
-      resize();
+    function render(timeSeconds, deltaSeconds = 0) {
+      // ResizeObserver owns all layout measurements. No getBoundingClientRect()
+      // or canvas resize work occurs in the animation loop.
       ctx.clearRect(0, 0, state.width, state.height);
 
       const loopTime = state.reducedMotion ? 0 : (timeSeconds % LOOP_DURATION);
 
       if (loopTime < ROBOT_SCENE_DURATION) {
         setScene('robot');
-        drawRobotScene(timeSeconds);
+        drawHeartRegistrationScene(
+          loopTime,
+          ROBOT_SCENE_DURATION,
+          timeSeconds,
+          deltaSeconds,
+        );
       } else {
         setScene('bed');
-        drawBedOfNailsScene(loopTime - ROBOT_SCENE_DURATION, BED_SCENE_DURATION, timeSeconds);
+        drawBedOfNailsScene(
+          loopTime - ROBOT_SCENE_DURATION,
+          BED_SCENE_DURATION,
+          timeSeconds,
+        );
       }
     }
 
-    function frame(now) {
-      render(now * 0.001);
+    function frame(nowMs) {
+      const deltaSeconds = state.lastFrameMs === null
+        ? SIMULATION_DT
+        : Math.min((nowMs - state.lastFrameMs) * 0.001, 0.05);
+      state.lastFrameMs = nowMs;
+
+      render(nowMs * 0.001, deltaSeconds);
       if (state.running) state.raf = requestAnimationFrame(frame);
     }
 
     function start() {
       if (state.running) return;
       state.running = true;
+      state.lastFrameMs = null;
+      state.nextSimulationTime = null;
       state.raf = requestAnimationFrame(frame);
     }
 
     function stop() {
       state.running = false;
       cancelAnimationFrame(state.raf);
+      state.lastFrameMs = null;
+      state.nextSimulationTime = null;
     }
 
     function sync() {
@@ -852,7 +1447,8 @@
       else stop();
     }
 
-    render(0);
+    resize();
+    render(0, 0);
     sync();
   })();
 </script>
