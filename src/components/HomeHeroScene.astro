@@ -44,7 +44,8 @@
 
     const ROBOT_SCENE_DURATION = 20.0;
     const BED_SCENE_DURATION = 10.0;
-    const LOOP_DURATION = ROBOT_SCENE_DURATION + BED_SCENE_DURATION;
+    const ASSEMBLY_SCENE_DURATION = 14.0;
+    const LOOP_DURATION = ROBOT_SCENE_DURATION + BED_SCENE_DURATION + ASSEMBLY_SCENE_DURATION;
 
     // Keep inverse-kinematics work below the display refresh rate. Rendering
     // still runs on requestAnimationFrame and interpolates the joint state.
@@ -388,6 +389,99 @@
       return points.filter((_, index) => ((index + offset) % stride) === 0);
     }
 
+    const ASSEMBLY_SCENE_DENSITY = 1.3;
+
+    function buildLineCloudXZ(a, b, y = 0.02, spacing = 0.014) {
+      const dx = b[0] - a[0];
+      const dz = b[1] - a[1];
+      const distance = Math.hypot(dx, dz);
+      const count = Math.max(2, Math.ceil((distance / spacing) * ASSEMBLY_SCENE_DENSITY));
+      const points = [];
+      for (let i = 0; i <= count; i++) {
+        const t = i / count;
+        points.push({
+          p: [lerp(a[0], b[0], t), y, lerp(a[1], b[1], t)],
+          n: [0, 1, 0],
+        });
+      }
+      return points;
+    }
+
+    function buildPolylineCloudXZ(vertices, y = 0.02, spacing = 0.014) {
+      const points = [];
+      for (let i = 0; i < vertices.length - 1; i++) {
+        points.push(...buildLineCloudXZ(vertices[i], vertices[i + 1], y, spacing));
+      }
+      return points;
+    }
+
+    function buildCircleCloudXZ(center, radius, y = 0.02, count = 56) {
+      const points = [];
+      for (let i = 0; i < count; i++) {
+        const a = (i / count) * PI * 2;
+        points.push({
+          p: [center[0] + Math.cos(a) * radius, y, center[1] + Math.sin(a) * radius],
+          n: [0, 1, 0],
+        });
+      }
+      return points;
+    }
+
+    function buildRectOutlineCloudXZ(center, sx, sz, y = 0.02, spacing = 0.014) {
+      const x0 = center[0] - sx / 2;
+      const x1 = center[0] + sx / 2;
+      const z0 = center[1] - sz / 2;
+      const z1 = center[1] + sz / 2;
+      return buildPolylineCloudXZ([
+        [x0, z0], [x1, z0], [x1, z1], [x0, z1], [x0, z0],
+      ], y, spacing);
+    }
+
+    function buildResistorCloudXZ(start, end, y = 0.02) {
+      const dx = end[0] - start[0];
+      const dz = end[1] - start[1];
+      const L = Math.hypot(dx, dz) || 1;
+      const ux = dx / L, uz = dz / L;
+      const px = -uz, pz = ux;
+      const verts = [start];
+      const zigCount = 7;
+      for (let i = 1; i < zigCount; i++) {
+        const t = i / zigCount;
+        const a = (i % 2 ? 1 : -1) * 0.035;
+        verts.push([
+          start[0] + dx * t + px * a,
+          start[1] + dz * t + pz * a,
+        ]);
+      }
+      verts.push(end);
+      return buildPolylineCloudXZ(verts, y, 0.011);
+    }
+
+    function resampleCloud(cloud, count) {
+      if (!cloud.length || count <= 0) return [];
+      const points = [];
+      for (let i = 0; i < count; i++) {
+        const idx = Math.floor((i / count) * cloud.length) % cloud.length;
+        points.push(cloud[idx]);
+      }
+      return points;
+    }
+
+    function densifyCloud(cloud, factor = ASSEMBLY_SCENE_DENSITY) {
+      return resampleCloud(cloud, Math.max(1, Math.round(cloud.length * factor)));
+    }
+
+    function scaleCloudXZ(cloud, sx = 1, sz = sx, center = [0, 0]) {
+      return cloud.map((pt) => ({
+        p: [
+          center[0] + (pt.p[0] - center[0]) * sx,
+          pt.p[1],
+          center[1] + (pt.p[2] - center[1]) * sz,
+        ],
+        n: pt.n,
+      }));
+    }
+
     const LINK_POINT_CLOUDS = [
       [
         ...buildCylinder([0, 0, -0.09], [0, 0, -0.05], 0.135, 6, 16, 4),
@@ -438,7 +532,7 @@
     // than anatomical CAD: the visual cue is the important part here — an
     // iiwa probing a curved tissue surface, aligning to the local normal and
     // leaving registered surface/normal samples behind.
-    const HEART_CENTER = [0.34, 0.0585, 0.14];
+    const HEART_CENTER = [0.34, 0.02925, 0.14];
     const HEART_SCALE_X = 0.056;
     const HEART_SCALE_Z = 0.051;
     const HEART_BASE_Y = 0.035;
@@ -609,6 +703,406 @@
       PCB_DETAIL_CLOUDS.push(decimate(buildBox([trace[0], trace[1], trace[2]], trace[3], trace[4], trace[5], 10, 1, 3), 2));
     }
 
+
+    // ---------------------------------------------------------------------
+    // IMPROVED WIEN BRIDGE OSCILLATOR -> PCB -> POPULATED PCB SCENE
+    // ---------------------------------------------------------------------
+    // Based on the actual KiCad/LTspice circuit used for the bioimpedance
+    // generator: ADA4625-2ARDZ, R1/R5 = 1.6 kOhm, C1/C2 = 1 nF,
+    // R2 = 470 Ohm, R3/R4 = 10 kOhm, R6 = 16 kOhm, R7 = 4.7 kOhm,
+    // D1/D2 = 1N914, C3 = 1 nF and a four-way +/-5 V / AGND / Vout header.
+
+    function buildCapacitorCloudXZ(start, end, y = 0.02) {
+      const dx = end[0] - start[0];
+      const dz = end[1] - start[1];
+      const L = Math.hypot(dx, dz) || 1;
+      const ux = dx / L, uz = dz / L;
+      const px = -uz, pz = ux;
+      const mid = [(start[0] + end[0]) * 0.5, (start[1] + end[1]) * 0.5];
+      const gap = Math.min(0.025, L * 0.14);
+      const plateHalf = 0.050;
+      const plateA = [mid[0] - ux * gap, mid[1] - uz * gap];
+      const plateB = [mid[0] + ux * gap, mid[1] + uz * gap];
+      return [
+        ...buildLineCloudXZ(start, plateA, y, 0.010),
+        ...buildLineCloudXZ(end, plateB, y, 0.010),
+        ...buildLineCloudXZ(
+          [plateA[0] - px * plateHalf, plateA[1] - pz * plateHalf],
+          [plateA[0] + px * plateHalf, plateA[1] + pz * plateHalf],
+          y,
+          0.009,
+        ),
+        ...buildLineCloudXZ(
+          [plateB[0] - px * plateHalf, plateB[1] - pz * plateHalf],
+          [plateB[0] + px * plateHalf, plateB[1] + pz * plateHalf],
+          y,
+          0.009,
+        ),
+      ];
+    }
+
+    function buildDiodeCloudXZ(start, end, reversed = false, y = 0.02) {
+      const a = reversed ? end : start;
+      const b = reversed ? start : end;
+      const dx = b[0] - a[0];
+      const dz = b[1] - a[1];
+      const L = Math.hypot(dx, dz) || 1;
+      const ux = dx / L, uz = dz / L;
+      const px = -uz, pz = ux;
+      const c = [(a[0] + b[0]) * 0.5, (a[1] + b[1]) * 0.5];
+      const left = [c[0] - ux * 0.045, c[1] - uz * 0.045];
+      const tip = [c[0] + ux * 0.015, c[1] + uz * 0.015];
+      const bar = [c[0] + ux * 0.040, c[1] + uz * 0.040];
+      return [
+        ...buildLineCloudXZ(start, reversed ? bar : left, y, 0.010),
+        ...buildLineCloudXZ(end, reversed ? left : bar, y, 0.010),
+        ...buildLineCloudXZ(
+          [left[0] + px * 0.035, left[1] + pz * 0.035],
+          tip,
+          y,
+          0.008,
+        ),
+        ...buildLineCloudXZ(
+          [left[0] - px * 0.035, left[1] - pz * 0.035],
+          tip,
+          y,
+          0.008,
+        ),
+        ...buildLineCloudXZ(
+          [bar[0] + px * 0.043, bar[1] + pz * 0.043],
+          [bar[0] - px * 0.043, bar[1] - pz * 0.043],
+          y,
+          0.008,
+        ),
+      ];
+    }
+
+    function buildOpAmpCloudXZ(center, sx = 0.26, sz = 0.22, y = 0.02) {
+      const [cx, cz] = center;
+      const x0 = cx - sx * 0.5;
+      const x1 = cx + sx * 0.5;
+      return [
+        ...buildPolylineCloudXZ([
+          [x0, cz - sz * 0.5],
+          [x0, cz + sz * 0.5],
+          [x1, cz],
+          [x0, cz - sz * 0.5],
+        ], y, 0.010),
+        ...buildLineCloudXZ([x0 - 0.070, cz - sz * 0.23], [x0, cz - sz * 0.23], y, 0.010),
+        ...buildLineCloudXZ([x0 - 0.070, cz + sz * 0.23], [x0, cz + sz * 0.23], y, 0.010),
+        ...buildLineCloudXZ([x1, cz], [x1 + 0.075, cz], y, 0.010),
+      ];
+    }
+
+    function getOpAmpPinsXZ(center, sx = 0.26, sz = 0.22) {
+      const [cx, cz] = center;
+      const x0 = cx - sx * 0.5;
+      const x1 = cx + sx * 0.5;
+      return {
+        upper: [x0 - 0.070, cz - sz * 0.23],
+        lower: [x0 - 0.070, cz + sz * 0.23],
+        out: [x1 + 0.075, cz],
+      };
+    }
+
+    function buildJunctionCloudXZ(x, z, y = 0.021, radius = 0.018) {
+      return buildCircleCloudXZ([x, z], radius, y, 18);
+    }
+
+    function buildGroundCloudXZ(x, z, y = 0.02) {
+      return [
+        ...buildLineCloudXZ([x, z], [x, z + 0.035], y, 0.009),
+        ...buildLineCloudXZ([x - 0.045, z + 0.035], [x + 0.045, z + 0.035], y, 0.009),
+        ...buildLineCloudXZ([x - 0.030, z + 0.055], [x + 0.030, z + 0.055], y, 0.009),
+        ...buildLineCloudXZ([x - 0.015, z + 0.075], [x + 0.015, z + 0.075], y, 0.009),
+      ];
+    }
+
+    const SCHEMATIC_CLOUD = (() => {
+      const c = [];
+
+      // The oscillator is laid out from explicit electrical nodes. This keeps
+      // every symbol endpoint coincident with its corresponding wire endpoint
+      // and avoids visual near-misses after perspective projection.
+      const U1A_CENTER = [-0.42, 0.00];
+      const U1B_CENTER = [0.42, 0.051];
+      const U1_SX = 0.26;
+      const U1_SZ = 0.22;
+      const u1a = getOpAmpPinsXZ(U1A_CENTER, U1_SX, U1_SZ);
+      const u1b = getOpAmpPinsXZ(U1B_CENTER, U1_SX, U1_SZ);
+
+      const VOUT_X = 0.84;
+      const VOUT_Z = u1b.out[1];
+      const FEEDBACK_Z = 0.36;
+
+      c.push(...buildOpAmpCloudXZ(U1A_CENTER, U1_SX, U1_SZ));
+      c.push(...buildOpAmpCloudXZ(U1B_CENTER, U1_SX, U1_SZ));
+
+      // -----------------------------------------------------------------
+      // Wien bridge into U1A non-inverting input.
+      // -----------------------------------------------------------------
+      const wienNode = [-0.78, u1a.upper[1]];
+      c.push(...buildLineCloudXZ(wienNode, u1a.upper));
+      c.push(...buildJunctionCloudXZ(...wienNode));
+
+      // R1 and C1 are parallel from the Wien node to AGND.
+      const r1x = -0.91;
+      const c1x = -0.70;
+      const shuntTopZ = 0.10;
+      const shuntBottomZ = 0.32;
+      const shuntBusZ = 0.40;
+
+      c.push(...buildPolylineCloudXZ([wienNode, [r1x, wienNode[1]], [r1x, shuntTopZ]]));
+      c.push(...buildResistorCloudXZ([r1x, shuntTopZ], [r1x, shuntBottomZ])); // R1 1.6k
+      c.push(...buildLineCloudXZ([r1x, shuntBottomZ], [r1x, shuntBusZ]));
+
+      c.push(...buildPolylineCloudXZ([wienNode, [c1x, wienNode[1]], [c1x, shuntTopZ]]));
+      c.push(...buildCapacitorCloudXZ([c1x, shuntTopZ], [c1x, shuntBottomZ])); // C1 1nF
+      c.push(...buildLineCloudXZ([c1x, shuntBottomZ], [c1x, shuntBusZ]));
+
+      c.push(...buildLineCloudXZ([r1x, shuntBusZ], [c1x, shuntBusZ]));
+      c.push(...buildJunctionCloudXZ(r1x, shuntBusZ));
+      c.push(...buildJunctionCloudXZ(c1x, shuntBusZ));
+      c.push(...buildGroundCloudXZ((r1x + c1x) * 0.5, shuntBusZ));
+
+      // Vout -> C2/R5 series arm -> Wien node.
+      const topZ = -0.44;
+      c.push(...buildLineCloudXZ(wienNode, [wienNode[0], topZ]));
+      c.push(...buildResistorCloudXZ([wienNode[0], topZ], [-0.46, topZ])); // R5 1.6k
+      c.push(...buildLineCloudXZ([-0.46, topZ], [-0.34, topZ]));
+      c.push(...buildCapacitorCloudXZ([-0.34, topZ], [-0.04, topZ])); // C2 1nF
+      c.push(...buildLineCloudXZ([-0.04, topZ], [VOUT_X, topZ]));
+      c.push(...buildLineCloudXZ([VOUT_X, topZ], [VOUT_X, VOUT_Z]));
+
+      // -----------------------------------------------------------------
+      // U1A output -> R2 -> U1B non-inverting input.
+      // U1B is vertically offset very slightly so this signal path is a clean
+      // horizontal net rather than a diagonal/near-miss at the pin.
+      // -----------------------------------------------------------------
+      const r2Left = [-0.08, u1a.out[1]];
+      const r2Right = [0.12, u1a.out[1]];
+      c.push(...buildLineCloudXZ(u1a.out, r2Left));
+      c.push(...buildResistorCloudXZ(r2Left, r2Right)); // R2 470
+      c.push(...buildLineCloudXZ(r2Right, u1b.upper));
+
+      // R4 shunts the R2/U1B+ node to AGND.
+      const r4Node = [0.16, u1a.out[1]];
+      c.push(...buildJunctionCloudXZ(...r4Node));
+      c.push(...buildLineCloudXZ(r4Node, [r4Node[0], 0.12]));
+      c.push(...buildResistorCloudXZ([r4Node[0], 0.12], [r4Node[0], 0.27])); // R4 10k
+      c.push(...buildLineCloudXZ([r4Node[0], 0.27], [r4Node[0], 0.30]));
+      c.push(...buildGroundCloudXZ(r4Node[0], 0.30));
+
+      // U1B is a follower: its inverting input returns directly to Vout.
+      c.push(...buildLineCloudXZ(u1b.out, [VOUT_X, VOUT_Z]));
+      c.push(...buildJunctionCloudXZ(VOUT_X, VOUT_Z));
+      c.push(...buildPolylineCloudXZ([
+        u1b.lower,
+        [0.70, u1b.lower[1]],
+        [0.70, VOUT_Z],
+        [VOUT_X, VOUT_Z],
+      ]));
+
+      // -----------------------------------------------------------------
+      // U1A inverting path and amplitude-control network.
+      // -----------------------------------------------------------------
+      const invBusX = -0.72;
+      const invPinNode = [invBusX, u1a.lower[1]];
+      c.push(...buildLineCloudXZ(u1a.lower, invPinNode));
+      c.push(...buildLineCloudXZ(invPinNode, [invBusX, FEEDBACK_Z]));
+
+      // R3 branches from the U1A inverting net to AGND.
+      const r3BranchZ = 0.17;
+      const r3x = -0.91;
+      c.push(...buildJunctionCloudXZ(invBusX, r3BranchZ));
+      c.push(...buildLineCloudXZ([invBusX, r3BranchZ], [r3x, r3BranchZ]));
+      c.push(...buildResistorCloudXZ([r3x, r3BranchZ], [r3x, 0.32])); // R3 10k
+      c.push(...buildLineCloudXZ([r3x, 0.32], [r3x, 0.35]));
+      c.push(...buildGroundCloudXZ(r3x, 0.35));
+
+      // R6 then R7 return the inverting path to Vout.
+      const r6Left = [-0.58, FEEDBACK_Z];
+      const r6Right = [-0.22, FEEDBACK_Z];
+      const r7Left = [0.08, FEEDBACK_Z];
+      const r7Right = [0.44, FEEDBACK_Z];
+
+      c.push(...buildLineCloudXZ([invBusX, FEEDBACK_Z], r6Left));
+      c.push(...buildResistorCloudXZ(r6Left, r6Right)); // R6 16k
+      c.push(...buildLineCloudXZ(r6Right, r7Left));
+      c.push(...buildJunctionCloudXZ(...r7Left));
+      c.push(...buildResistorCloudXZ(r7Left, r7Right)); // R7 4.7k
+      c.push(...buildJunctionCloudXZ(...r7Right));
+      c.push(...buildLineCloudXZ(r7Right, [VOUT_X, FEEDBACK_Z]));
+      c.push(...buildLineCloudXZ([VOUT_X, FEEDBACK_Z], [VOUT_X, VOUT_Z]));
+
+      // D1/D2 are antiparallel across R7. Give them generous separation so
+      // the two diode symbols remain distinct at all viewport sizes.
+      const diodeTopZ = 0.52;
+      const diodeBottomZ = 0.69;
+      c.push(...buildLineCloudXZ(r7Left, [r7Left[0], diodeBottomZ]));
+      c.push(...buildLineCloudXZ(r7Right, [r7Right[0], diodeBottomZ]));
+      c.push(...buildDiodeCloudXZ([r7Left[0], diodeTopZ], [r7Right[0], diodeTopZ], false)); // D1 1N914
+      c.push(...buildDiodeCloudXZ([r7Left[0], diodeBottomZ], [r7Right[0], diodeBottomZ], true)); // D2 1N914
+      c.push(...buildJunctionCloudXZ(r7Left[0], diodeTopZ));
+      c.push(...buildJunctionCloudXZ(r7Right[0], diodeTopZ));
+      c.push(...buildJunctionCloudXZ(r7Left[0], diodeBottomZ));
+      c.push(...buildJunctionCloudXZ(r7Right[0], diodeBottomZ));
+
+      // -----------------------------------------------------------------
+      // Supply / decoupling / connector section. This is kept separate from
+      // the signal path, like the KiCad drawing, with explicit visible wires.
+      // -----------------------------------------------------------------
+      const supplyCenter = [1.05, -0.30];
+      c.push(...buildRectOutlineCloudXZ(supplyCenter, 0.18, 0.18, 0.02, 0.010)); // U1C power unit
+
+      const supplyLeftX = 0.96;
+      const supplyRightX = 1.14;
+      const plus5Z = -0.36;
+      const minus5Z = -0.24;
+      c.push(...buildCapacitorCloudXZ([0.88, plus5Z], [0.88, minus5Z])); // C3 1nF
+      c.push(...buildLineCloudXZ([0.88, plus5Z], [supplyLeftX, plus5Z]));
+      c.push(...buildLineCloudXZ([0.88, minus5Z], [supplyLeftX, minus5Z]));
+
+      const connectorCenter = [1.38, -0.16];
+      c.push(...buildRectOutlineCloudXZ(connectorCenter, 0.12, 0.36, 0.02, 0.009)); // J2
+      const connectorX = 1.32;
+      const routeX = 1.22;
+      const jPins = [-0.31, -0.23, -0.15, -0.07]; // +5, -5, AGND, Vout
+      for (const z of jPins) c.push(...buildLineCloudXZ([connectorX, z], [routeX, z], 0.02, 0.009));
+
+      c.push(...buildPolylineCloudXZ([[routeX, jPins[0]], [supplyRightX, jPins[0]], [supplyRightX, plus5Z]]));
+      c.push(...buildPolylineCloudXZ([[routeX, jPins[1]], [supplyRightX, jPins[1]], [supplyRightX, minus5Z]]));
+
+      c.push(...buildPolylineCloudXZ([[routeX, jPins[2]], [1.18, jPins[2]], [1.18, -0.08]]));
+      c.push(...buildGroundCloudXZ(1.18, -0.08));
+
+      c.push(...buildPolylineCloudXZ([
+        [routeX, jPins[3]],
+        [0.94, jPins[3]],
+        [0.94, VOUT_Z],
+        [VOUT_X, VOUT_Z],
+      ]));
+
+      return c;
+    })();
+
+    // A compact stylised PCB implementation of the same circuit. The component
+    // complement and relative functional grouping match the real oscillator.
+    const PCB_ASSEMBLY_BOARD_CLOUD = densifyCloud(buildBox([0, 0, 0], 1.45, 0.03, 1.0, 28, 4, 22));
+
+    const PCB_ASSEMBLY_TRACE_CLOUDS = [
+      // Wien bridge / input network.
+      densifyCloud(buildBox([-0.48, 0.019, -0.06], 0.28, 0.006, 0.022, 7, 1, 2)),
+      densifyCloud(buildBox([-0.55, 0.019, 0.10], 0.022, 0.006, 0.34, 2, 1, 8)),
+      densifyCloud(buildBox([-0.36, 0.019, -0.30], 0.40, 0.006, 0.022, 9, 1, 2)),
+      densifyCloud(buildBox([-0.10, 0.019, -0.30], 0.022, 0.006, 0.24, 2, 1, 6)),
+      // Interstage / central IC routing.
+      densifyCloud(buildBox([-0.12, 0.019, -0.11], 0.32, 0.006, 0.022, 8, 1, 2)),
+      densifyCloud(buildBox([0.13, 0.019, -0.03], 0.022, 0.006, 0.18, 2, 1, 5)),
+      densifyCloud(buildBox([0.22, 0.019, 0.10], 0.34, 0.006, 0.022, 8, 1, 2)),
+      // Gain / amplitude-control network.
+      densifyCloud(buildBox([-0.18, 0.019, 0.25], 0.44, 0.006, 0.022, 10, 1, 2)),
+      densifyCloud(buildBox([0.22, 0.019, 0.25], 0.34, 0.006, 0.022, 8, 1, 2)),
+      densifyCloud(buildBox([0.47, 0.019, 0.25], 0.022, 0.006, 0.18, 2, 1, 5)),
+      densifyCloud(buildBox([0.46, 0.019, 0.33], 0.22, 0.006, 0.022, 6, 1, 2)),
+      densifyCloud(buildBox([0.46, 0.019, 0.39], 0.22, 0.006, 0.022, 6, 1, 2)),
+      // Output / connector / rails.
+      densifyCloud(buildBox([0.46, 0.019, -0.08], 0.022, 0.006, 0.42, 2, 1, 9)),
+      densifyCloud(buildBox([0.57, 0.019, -0.28], 0.22, 0.006, 0.022, 6, 1, 2)),
+      densifyCloud(buildBox([0.57, 0.019, -0.18], 0.22, 0.006, 0.022, 6, 1, 2)),
+      densifyCloud(buildBox([0.57, 0.019, -0.08], 0.22, 0.006, 0.022, 6, 1, 2)),
+      densifyCloud(buildBox([0.57, 0.019, 0.02], 0.22, 0.006, 0.022, 6, 1, 2)),
+    ];
+
+    const PCB_ASSEMBLY_PAD_CLOUDS = [];
+
+    function addTwoPadFootprint(x, z, axis = 'x', gap = 0.12, padX = 0.055, padZ = 0.075) {
+      const dx = axis === 'x' ? gap * 0.5 : 0;
+      const dz = axis === 'z' ? gap * 0.5 : 0;
+      PCB_ASSEMBLY_PAD_CLOUDS.push(densifyCloud(buildRectOutlineCloudXZ([x - dx, z - dz], padX, padZ, 0.020, 0.010)));
+      PCB_ASSEMBLY_PAD_CLOUDS.push(densifyCloud(buildRectOutlineCloudXZ([x + dx, z + dz], padX, padZ, 0.020, 0.010)));
+    }
+
+    // U1: SOIC-style dual op-amp footprint.
+    for (let i = 0; i < 4; i++) {
+      const z = -0.09 + i * 0.060;
+      PCB_ASSEMBLY_PAD_CLOUDS.push(densifyCloud(buildRectOutlineCloudXZ([-0.14, z], 0.055, 0.032, 0.020, 0.008)));
+      PCB_ASSEMBLY_PAD_CLOUDS.push(densifyCloud(buildRectOutlineCloudXZ([0.14, z], 0.055, 0.032, 0.020, 0.008)));
+    }
+
+    // R1..R7.
+    addTwoPadFootprint(-0.48, 0.08, 'x');
+    addTwoPadFootprint(-0.12, -0.12, 'x');
+    addTwoPadFootprint(-0.42, 0.27, 'x');
+    addTwoPadFootprint(0.14, 0.27, 'x');
+    addTwoPadFootprint(-0.31, -0.32, 'x');
+    addTwoPadFootprint(0.30, 0.20, 'x');
+    addTwoPadFootprint(0.50, 0.20, 'x');
+
+    // C1, C2 and C3.
+    addTwoPadFootprint(-0.58, -0.10, 'z', 0.11, 0.070, 0.050);
+    addTwoPadFootprint(0.00, -0.32, 'x', 0.11, 0.055, 0.070);
+    addTwoPadFootprint(0.28, -0.27, 'z', 0.11, 0.070, 0.050);
+
+    // D1/D2 amplitude-control pair.
+    addTwoPadFootprint(0.40, 0.33, 'x', 0.13, 0.050, 0.055);
+    addTwoPadFootprint(0.40, 0.40, 'x', 0.13, 0.050, 0.055);
+
+    // J2: four-pin power/output header.
+    for (let i = 0; i < 4; i++) {
+      PCB_ASSEMBLY_PAD_CLOUDS.push(
+        densifyCloud(buildRectOutlineCloudXZ([0.61, -0.30 + i * 0.10], 0.075, 0.075, 0.020, 0.009)),
+      );
+    }
+
+    const PCB_ASSEMBLY_BARE_CLOUD = [
+      ...PCB_ASSEMBLY_BOARD_CLOUD,
+      ...PCB_ASSEMBLY_TRACE_CLOUDS.flat(),
+      ...PCB_ASSEMBLY_PAD_CLOUDS.flat(),
+    ];
+
+    // Components arrive in roughly functional order: timing network, gain
+    // network, amplitude control, supply decoupling, op-amp, then connector.
+    const PCB_ASSEMBLY_COMPONENT_CLOUDS = [
+      // R1 1.6k
+      densifyCloud(buildBox([-0.48, 0.047, 0.08], 0.16, 0.050, 0.070, 10, 4, 6)),
+      // C1 1nF
+      densifyCloud(buildBox([-0.58, 0.045, -0.10], 0.075, 0.050, 0.14, 6, 4, 9)),
+      // R5 1.6k
+      densifyCloud(buildBox([-0.31, 0.047, -0.32], 0.16, 0.050, 0.070, 10, 4, 6)),
+      // C2 1nF
+      densifyCloud(buildBox([0.00, 0.045, -0.32], 0.14, 0.050, 0.075, 9, 4, 6)),
+      // R3 10k
+      densifyCloud(buildBox([-0.42, 0.047, 0.27], 0.16, 0.050, 0.070, 10, 4, 6)),
+      // R2 470
+      densifyCloud(buildBox([-0.12, 0.047, -0.12], 0.16, 0.050, 0.070, 10, 4, 6)),
+      // R4 10k
+      densifyCloud(buildBox([0.14, 0.047, 0.27], 0.16, 0.050, 0.070, 10, 4, 6)),
+      // R6 16k
+      densifyCloud(buildBox([0.30, 0.047, 0.20], 0.16, 0.050, 0.070, 10, 4, 6)),
+      // R7 4.7k
+      densifyCloud(buildBox([0.50, 0.047, 0.20], 0.16, 0.050, 0.070, 10, 4, 6)),
+      // D1 1N914
+      densifyCloud(buildBox([0.40, 0.045, 0.33], 0.17, 0.045, 0.050, 10, 4, 5)),
+      // D2 1N914
+      densifyCloud(buildBox([0.40, 0.045, 0.40], 0.17, 0.045, 0.050, 10, 4, 5)),
+      // C3 1nF supply decoupling
+      densifyCloud(buildBox([0.28, 0.045, -0.27], 0.075, 0.050, 0.14, 6, 4, 9)),
+      // U1 ADA4625-2ARDZ
+      densifyCloud(buildBox([0.0, 0.065, 0.0], 0.25, 0.10, 0.25, 16, 6, 14)),
+      // J2 four-way connector. Four pin bodies are one placement event.
+      densifyCloud([
+        ...buildBox([0.61, 0.070, -0.30], 0.085, 0.10, 0.075, 6, 6, 5),
+        ...buildBox([0.61, 0.070, -0.20], 0.085, 0.10, 0.075, 6, 6, 5),
+        ...buildBox([0.61, 0.070, -0.10], 0.085, 0.10, 0.075, 6, 6, 5),
+        ...buildBox([0.61, 0.070, 0.00], 0.085, 0.10, 0.075, 6, 6, 5),
+      ]),
+    ];
+
+    const ASSEMBLY_MORPH_COUNT = 2145;
+    const SCHEMATIC_MORPH_CLOUD = resampleCloud(SCHEMATIC_CLOUD, ASSEMBLY_MORPH_COUNT);
+    const PCB_MORPH_CLOUD = resampleCloud(PCB_ASSEMBLY_BARE_CLOUD, ASSEMBLY_MORPH_COUNT);
+
     const FIXTURE_FRAME_CLOUDS = [
       decimate(buildBox([0, -0.19, 0], 1.78, 0.06, 1.28, 14, 3, 12), 3),
       decimate(buildBox([0, -0.11, -0.63], 1.62, 0.18, 0.08, 12, 5, 2), 2),
@@ -670,7 +1164,7 @@
       visible: true,
       reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
       raf: 0,
-      base: [0.02, -0.62, 0],
+      base: [-0.044, -0.62, -0.028],
 
       // IK/simulation state is updated at SIMULATION_HZ; qRender is smoothly
       // interpolated at display refresh rate.
@@ -681,6 +1175,7 @@
 
       robotFit: { scale: 0 },
       bedFit: { scale: 0 },
+      assemblyFit: { scale: 0 },
       currentScene: '',
     };
 
@@ -716,6 +1211,7 @@
       state.dpr = dpr;
       state.robotFit.scale = 0;
       state.bedFit.scale = 0;
+      state.assemblyFit.scale = 0;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
 
@@ -761,6 +1257,11 @@
 
       if (sceneName === 'bed') {
         state.bedFit.scale = 0;
+        state.nextSimulationTime = null;
+      }
+
+      if (sceneName === 'assembly') {
+        state.assemblyFit.scale = 0;
         state.nextSimulationTime = null;
       }
     }
@@ -1081,12 +1582,16 @@
 
     function stepRobotSimulation(localTime, duration) {
       const motion = heartProbeMotion(localTime, duration);
+      const contactOrApproach =
+        (motion.index === 0 && motion.phase >= 0.62)
+        || (motion.index > 0 && motion.phase >= 0.67);
+
       const qSolved = solveProbeTipIK(
         state.qSim.slice(),
         motion.target,
         motion.targetDirection,
         state.base,
-        5,
+        contactOrApproach ? 8 : 5,
       );
 
       const maxJointStep = MAX_JOINT_SPEED_RAD_S * SIMULATION_DT;
@@ -1176,12 +1681,12 @@
       );
 
       const gap = len(vSub(probe.p, renderedTip));
-      if (gap > 0.035) return;
+      if (gap > 0.012) return;
 
       const bridge = buildCylinder(
         renderedTip,
         probe.p,
-        0.0045,
+        0.0035,
         3,
         10,
         1,
@@ -1391,6 +1896,101 @@
       sizeAndDrawDots(dots);
     }
 
+
+    function getAssemblySceneCamera(t, globalTime) {
+      const morphCamera = easeInOut(clamp((t - 0.18) / 0.30));
+      const eyeSchematic = [0.92, 3.55, 1.72];
+      const eyeBoard = [1.62, 1.25, 1.86];
+      const targetSchematic = [0.10, 0.0, 0.04];
+      const targetBoard = [0, 0.02, 0.02];
+      const eye = vLerp(eyeSchematic, eyeBoard, morphCamera);
+      const target = vLerp(targetSchematic, targetBoard, morphCamera);
+      eye[0] += 0.025 * Math.cos(globalTime * 0.19);
+      eye[2] += 0.020 * Math.sin(globalTime * 0.17);
+      return makeCamera(eye, target);
+    }
+
+    function drawAssemblyScene(localTime, duration, globalTime) {
+      const t = clamp(localTime / duration);
+      const camera = getAssemblySceneCamera(t, globalTime);
+      const lightDir = norm([0.55, 1.0, 0.46]);
+      const dots = [];
+
+      // 0-24%: schematic holds; 24-47%: it physically morphs into the bare PCB.
+      const morph = easeInOut(clamp((t - 0.24) / 0.23));
+      const bareHold = clamp((t - 0.44) / 0.06);
+
+      const morphCloud = [];
+      for (let i = 0; i < ASSEMBLY_MORPH_COUNT; i++) {
+        const a = SCHEMATIC_MORPH_CLOUD[i];
+        const b = PCB_MORPH_CLOUD[i];
+        const settle = smooth(morph);
+        morphCloud.push({
+          p: [
+            lerp(a.p[0], b.p[0], settle),
+            lerp(a.p[1], b.p[1], settle),
+            lerp(a.p[2], b.p[2], settle),
+          ],
+          n: norm(vLerp(a.n, b.n, settle)),
+        });
+      }
+      pushCloud(dots, morphCloud, null, camera, lightDir, 'pcb', 0.84);
+
+      // Reinforce the finished bare board after the morph, so traces and pads
+      // become crisp before component placement begins.
+      if (bareHold > 0) {
+        pushCloud(dots, PCB_ASSEMBLY_BOARD_CLOUD, null, camera, lightDir, 'pcb', 0.18 + 0.55 * bareHold);
+        for (const cloud of PCB_ASSEMBLY_TRACE_CLOUDS) {
+          pushCloud(dots, cloud, null, camera, lightDir, 'pcb-detail', 0.12 + 0.62 * bareHold);
+        }
+        for (const cloud of PCB_ASSEMBLY_PAD_CLOUDS) {
+          pushCloud(dots, cloud, null, camera, lightDir, 'pcb-detail', 0.18 + 0.60 * bareHold);
+        }
+      }
+
+      // 50-94%: components arrive one at a time from above and settle onto pads.
+      const population = clamp((t - 0.50) / 0.44);
+      const componentCount = PCB_ASSEMBLY_COMPONENT_CLOUDS.length;
+      const travelWindow = 0.92 / componentCount;
+
+      for (let i = 0; i < componentCount; i++) {
+        const start = i * travelWindow;
+        const local = clamp((population - start) / (travelWindow * 0.76));
+        if (local <= 0) continue;
+
+        const settle = easeInOut(local);
+        const dropHeight = (1 - settle) * (0.40 + 0.06 * (i % 3));
+        const tinyOvershoot = local > 0.80
+          ? -0.010 * Math.sin(((local - 0.80) / 0.20) * PI)
+          : 0;
+        const frame = { R: IDENTITY, t: [0, dropHeight + tinyOvershoot, 0] };
+        const active = local < 0.96;
+
+        pushCloud(
+          dots,
+          PCB_ASSEMBLY_COMPONENT_CLOUDS[i],
+          frame,
+          camera,
+          lightDir,
+          active ? 'pin-active' : 'pcb',
+          active ? 0.92 + settle * 0.30 : 0.86,
+          active ? 'blue' : 'black',
+        );
+      }
+
+      const boardAnchor = project([0, 0, 0], camera);
+      fitAnchoredDots(dots, boardAnchor, state.assemblyFit, {
+        screenX: 0.53,
+        screenY: 0.56,
+        left: 0.04,
+        right: 0.985,
+        top: 0.04,
+        bottom: 0.955,
+      });
+
+      sizeAndDrawDots(dots);
+    }
+
     function render(timeSeconds, deltaSeconds = 0) {
       // ResizeObserver owns all layout measurements. No getBoundingClientRect()
       // or canvas resize work occurs in the animation loop.
@@ -1406,11 +2006,18 @@
           timeSeconds,
           deltaSeconds,
         );
-      } else {
+      } else if (loopTime < ROBOT_SCENE_DURATION + BED_SCENE_DURATION) {
         setScene('bed');
         drawBedOfNailsScene(
           loopTime - ROBOT_SCENE_DURATION,
           BED_SCENE_DURATION,
+          timeSeconds,
+        );
+      } else {
+        setScene('assembly');
+        drawAssemblyScene(
+          loopTime - ROBOT_SCENE_DURATION - BED_SCENE_DURATION,
+          ASSEMBLY_SCENE_DURATION,
           timeSeconds,
         );
       }
