@@ -1,9 +1,24 @@
 <div class="hero-scene" data-home-hero-scene>
-  <canvas class="hero-scene__canvas" aria-hidden="true"></canvas>
+  <div class="hero-scene__frame">
+    <canvas class="hero-scene__canvas" aria-hidden="true"></canvas>
+  </div>
+  <div class="hero-scene__caption" aria-live="polite">
+    <span class="hero-scene__caption-line hero-scene__caption-line--primary"></span>
+    <span class="hero-scene__caption-line hero-scene__caption-line--secondary"></span>
+  </div>
 </div>
 
 <style>
   .hero-scene {
+    position: relative;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: clamp(10px, 1.9vw, 16px);
+  }
+
+  .hero-scene__frame {
     position: relative;
     width: 100%;
     aspect-ratio: 1 / 1;
@@ -20,8 +35,37 @@
     background: transparent;
   }
 
+  .hero-scene__caption {
+    position: relative;
+    width: min(calc(100% - 2rem), 640px);
+    min-height: 1.5em;
+    text-align: center;
+    pointer-events: none;
+    font-family: inherit;
+    letter-spacing: 0.01em;
+  }
+
+  .hero-scene__caption-line {
+    display: block;
+    font-size: clamp(0.95rem, 1.8vw, 1.15rem);
+    line-height: 1.3;
+    color: rgba(17, 19, 24, 0.88);
+    text-wrap: balance;
+    transition: opacity 180ms linear;
+  }
+
+  .hero-scene__caption-line--primary {
+    font-weight: 500;
+  }
+
+  .hero-scene__caption-line--secondary {
+    position: absolute;
+    inset: 0;
+    font-weight: 500;
+  }
+
   @media (max-width: 900px) {
-    .hero-scene {
+    .hero-scene__frame {
       aspect-ratio: 4 / 3;
       min-height: 340px;
     }
@@ -33,11 +77,14 @@
     const root = document.querySelector('[data-home-hero-scene]');
     if (!root) return;
 
-    const canvas = root.querySelector('canvas');
+    const frameEl = root.querySelector('.hero-scene__frame');
+    const canvas = frameEl.querySelector('canvas');
+    const captionPrimary = root.querySelector('.hero-scene__caption-line--primary');
+    const captionSecondary = root.querySelector('.hero-scene__caption-line--secondary');
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const DPR_CAP = 2;
+    const DPR_CAP = 3;
     const BLACK = '17, 19, 24';
     const BLUE = '42, 118, 255';
     const PI = Math.PI;
@@ -45,7 +92,12 @@
     const ROBOT_SCENE_DURATION = 20.0;
     const BED_SCENE_DURATION = 10.0;
     const ASSEMBLY_SCENE_DURATION = 14.0;
-    const LOOP_DURATION = ROBOT_SCENE_DURATION + BED_SCENE_DURATION + ASSEMBLY_SCENE_DURATION;
+    const SCENE_TRANSITION_DURATION = 2.6;
+    const LOOP_DURATION =
+      ROBOT_SCENE_DURATION
+      + BED_SCENE_DURATION
+      + ASSEMBLY_SCENE_DURATION
+      + SCENE_TRANSITION_DURATION * 3;
 
     // Keep inverse-kinematics work below the display refresh rate. Rendering
     // still runs on requestAnimationFrame and interpolates the joint state.
@@ -389,7 +441,7 @@
       return points.filter((_, index) => ((index + offset) % stride) === 0);
     }
 
-    const ASSEMBLY_SCENE_DENSITY = 1.3;
+    const ASSEMBLY_SCENE_DENSITY = 3.55;
 
     function buildLineCloudXZ(a, b, y = 0.02, spacing = 0.014) {
       const dx = b[0] - a[0];
@@ -617,8 +669,8 @@
       return points;
     }
 
-    const HEART_SURFACE_CLOUD = buildHeartSurface();
-    const HEART_SURFACE_CLOUD_DENSE = buildHeartSurface(24, 68);
+    const HEART_SURFACE_CLOUD = buildHeartSurface(16, 46);
+    const HEART_SURFACE_CLOUD_DENSE = buildHeartSurface(36, 102);
 
     const HEART_TRAY_CLOUD = decimate(
       buildBox([HEART_CENTER[0], HEART_CENTER[1] - 0.012, HEART_CENTER[2]], 0.171, 0.020, 0.152, 8, 2, 7),
@@ -662,7 +714,7 @@
       };
     });
 
-    const PCB_BOARD_CLOUD = decimate(buildBox([0, 0, 0], 1.45, 0.03, 1.0, 18, 3, 14), 2);
+    const PCB_BOARD_CLOUD = buildBox([0, 0, 0], 1.45, 0.03, 1.0, 30, 5, 24);
 
     const PCB_COMPONENT_CLOUDS = [
       buildBox([0.0, 0.052, 0.02], 0.38, 0.085, 0.26, 10, 4, 8),
@@ -824,16 +876,16 @@
       // The oscillator is laid out from explicit electrical nodes. This keeps
       // every symbol endpoint coincident with its corresponding wire endpoint
       // and avoids visual near-misses after perspective projection.
-      const U1A_CENTER = [-0.42, 0.00];
-      const U1B_CENTER = [0.42, 0.051];
+      const U1A_CENTER = [-0.56, 0.00];
+      const U1B_CENTER = [0.78, 0.0506];
       const U1_SX = 0.26;
       const U1_SZ = 0.22;
       const u1a = getOpAmpPinsXZ(U1A_CENTER, U1_SX, U1_SZ);
       const u1b = getOpAmpPinsXZ(U1B_CENTER, U1_SX, U1_SZ);
 
-      const VOUT_X = 0.84;
+      const VOUT_X = 1.34;
       const VOUT_Z = u1b.out[1];
-      const FEEDBACK_Z = 0.36;
+      const FEEDBACK_Z = 0.46;
 
       c.push(...buildOpAmpCloudXZ(U1A_CENTER, U1_SX, U1_SZ));
       c.push(...buildOpAmpCloudXZ(U1B_CENTER, U1_SX, U1_SZ));
@@ -841,16 +893,16 @@
       // -----------------------------------------------------------------
       // Wien bridge into U1A non-inverting input.
       // -----------------------------------------------------------------
-      const wienNode = [-0.78, u1a.upper[1]];
+      const wienNode = [-1.02, u1a.upper[1]];
       c.push(...buildLineCloudXZ(wienNode, u1a.upper));
       c.push(...buildJunctionCloudXZ(...wienNode));
 
       // R1 and C1 are parallel from the Wien node to AGND.
-      const r1x = -0.91;
-      const c1x = -0.70;
-      const shuntTopZ = 0.10;
-      const shuntBottomZ = 0.32;
-      const shuntBusZ = 0.40;
+      const r1x = -1.28;
+      const c1x = -0.86;
+      const shuntTopZ = 0.08;
+      const shuntBottomZ = 0.30;
+      const shuntBusZ = 0.50;
 
       c.push(...buildPolylineCloudXZ([wienNode, [r1x, wienNode[1]], [r1x, shuntTopZ]]));
       c.push(...buildResistorCloudXZ([r1x, shuntTopZ], [r1x, shuntBottomZ])); // R1 1.6k
@@ -866,54 +918,56 @@
       c.push(...buildGroundCloudXZ((r1x + c1x) * 0.5, shuntBusZ));
 
       // Vout -> C2/R5 series arm -> Wien node.
-      const topZ = -0.44;
+      const topZ = -0.60;
       c.push(...buildLineCloudXZ(wienNode, [wienNode[0], topZ]));
       c.push(...buildResistorCloudXZ([wienNode[0], topZ], [-0.46, topZ])); // R5 1.6k
       c.push(...buildLineCloudXZ([-0.46, topZ], [-0.34, topZ]));
       c.push(...buildCapacitorCloudXZ([-0.34, topZ], [-0.04, topZ])); // C2 1nF
-      c.push(...buildLineCloudXZ([-0.04, topZ], [VOUT_X, topZ]));
-      c.push(...buildLineCloudXZ([VOUT_X, topZ], [VOUT_X, VOUT_Z]));
+      c.push(...buildLineCloudXZ([-0.04, topZ], [1.48, topZ]));
+      c.push(...buildLineCloudXZ([1.48, topZ], [1.48, VOUT_Z]));
+      c.push(...buildLineCloudXZ([1.48, VOUT_Z], [VOUT_X, VOUT_Z]));
 
       // -----------------------------------------------------------------
       // U1A output -> R2 -> U1B non-inverting input.
       // U1B is vertically offset very slightly so this signal path is a clean
       // horizontal net rather than a diagonal/near-miss at the pin.
       // -----------------------------------------------------------------
-      const r2Left = [-0.08, u1a.out[1]];
+      const r2Left = [-0.18, u1a.out[1]];
       const r2Right = [0.12, u1a.out[1]];
       c.push(...buildLineCloudXZ(u1a.out, r2Left));
       c.push(...buildResistorCloudXZ(r2Left, r2Right)); // R2 470
-      c.push(...buildLineCloudXZ(r2Right, u1b.upper));
+      c.push(...buildLineCloudXZ(r2Right, [u1b.upper[0], r2Right[1]]));
+      c.push(...buildLineCloudXZ([u1b.upper[0], r2Right[1]], u1b.upper));
 
       // R4 shunts the R2/U1B+ node to AGND.
-      const r4Node = [0.16, u1a.out[1]];
+      const r4Node = [0.18, u1a.out[1]];
       c.push(...buildJunctionCloudXZ(...r4Node));
-      c.push(...buildLineCloudXZ(r4Node, [r4Node[0], 0.12]));
-      c.push(...buildResistorCloudXZ([r4Node[0], 0.12], [r4Node[0], 0.27])); // R4 10k
-      c.push(...buildLineCloudXZ([r4Node[0], 0.27], [r4Node[0], 0.30]));
-      c.push(...buildGroundCloudXZ(r4Node[0], 0.30));
+      c.push(...buildLineCloudXZ(r4Node, [r4Node[0], 0.16]));
+      c.push(...buildResistorCloudXZ([r4Node[0], 0.16], [r4Node[0], 0.31])); // R4 10k
+      c.push(...buildLineCloudXZ([r4Node[0], 0.31], [r4Node[0], 0.35]));
+      c.push(...buildGroundCloudXZ(r4Node[0], 0.35));
 
       // U1B is a follower: its inverting input returns directly to Vout.
       c.push(...buildLineCloudXZ(u1b.out, [VOUT_X, VOUT_Z]));
       c.push(...buildJunctionCloudXZ(VOUT_X, VOUT_Z));
       c.push(...buildPolylineCloudXZ([
         u1b.lower,
-        [0.70, u1b.lower[1]],
-        [0.70, VOUT_Z],
+        [1.02, u1b.lower[1]],
+        [1.02, VOUT_Z],
         [VOUT_X, VOUT_Z],
       ]));
 
       // -----------------------------------------------------------------
       // U1A inverting path and amplitude-control network.
       // -----------------------------------------------------------------
-      const invBusX = -0.72;
+      const invBusX = -0.98;
       const invPinNode = [invBusX, u1a.lower[1]];
       c.push(...buildLineCloudXZ(u1a.lower, invPinNode));
       c.push(...buildLineCloudXZ(invPinNode, [invBusX, FEEDBACK_Z]));
 
       // R3 branches from the U1A inverting net to AGND.
       const r3BranchZ = 0.17;
-      const r3x = -0.91;
+      const r3x = -1.26;
       c.push(...buildJunctionCloudXZ(invBusX, r3BranchZ));
       c.push(...buildLineCloudXZ([invBusX, r3BranchZ], [r3x, r3BranchZ]));
       c.push(...buildResistorCloudXZ([r3x, r3BranchZ], [r3x, 0.32])); // R3 10k
@@ -921,10 +975,10 @@
       c.push(...buildGroundCloudXZ(r3x, 0.35));
 
       // R6 then R7 return the inverting path to Vout.
-      const r6Left = [-0.58, FEEDBACK_Z];
+      const r6Left = [-0.74, FEEDBACK_Z];
       const r6Right = [-0.22, FEEDBACK_Z];
-      const r7Left = [0.08, FEEDBACK_Z];
-      const r7Right = [0.44, FEEDBACK_Z];
+      const r7Left = [0.28, FEEDBACK_Z];
+      const r7Right = [0.82, FEEDBACK_Z];
 
       c.push(...buildLineCloudXZ([invBusX, FEEDBACK_Z], r6Left));
       c.push(...buildResistorCloudXZ(r6Left, r6Right)); // R6 16k
@@ -937,8 +991,8 @@
 
       // D1/D2 are antiparallel across R7. Give them generous separation so
       // the two diode symbols remain distinct at all viewport sizes.
-      const diodeTopZ = 0.52;
-      const diodeBottomZ = 0.69;
+      const diodeTopZ = 0.66;
+      const diodeBottomZ = 0.88;
       c.push(...buildLineCloudXZ(r7Left, [r7Left[0], diodeBottomZ]));
       c.push(...buildLineCloudXZ(r7Right, [r7Right[0], diodeBottomZ]));
       c.push(...buildDiodeCloudXZ([r7Left[0], diodeTopZ], [r7Right[0], diodeTopZ], false)); // D1 1N914
@@ -952,34 +1006,34 @@
       // Supply / decoupling / connector section. This is kept separate from
       // the signal path, like the KiCad drawing, with explicit visible wires.
       // -----------------------------------------------------------------
-      const supplyCenter = [1.05, -0.30];
+      const supplyCenter = [1.66, -0.42];
       c.push(...buildRectOutlineCloudXZ(supplyCenter, 0.18, 0.18, 0.02, 0.010)); // U1C power unit
 
-      const supplyLeftX = 0.96;
-      const supplyRightX = 1.14;
-      const plus5Z = -0.36;
-      const minus5Z = -0.24;
-      c.push(...buildCapacitorCloudXZ([0.88, plus5Z], [0.88, minus5Z])); // C3 1nF
-      c.push(...buildLineCloudXZ([0.88, plus5Z], [supplyLeftX, plus5Z]));
-      c.push(...buildLineCloudXZ([0.88, minus5Z], [supplyLeftX, minus5Z]));
+      const supplyLeftX = 1.57;
+      const supplyRightX = 1.75;
+      const plus5Z = -0.54;
+      const minus5Z = -0.34;
+      c.push(...buildCapacitorCloudXZ([1.42, plus5Z], [1.42, minus5Z])); // C3 1nF
+      c.push(...buildLineCloudXZ([1.42, plus5Z], [supplyLeftX, plus5Z]));
+      c.push(...buildLineCloudXZ([1.42, minus5Z], [supplyLeftX, minus5Z]));
 
-      const connectorCenter = [1.38, -0.16];
+      const connectorCenter = [2.02, -0.26];
       c.push(...buildRectOutlineCloudXZ(connectorCenter, 0.12, 0.36, 0.02, 0.009)); // J2
-      const connectorX = 1.32;
-      const routeX = 1.22;
-      const jPins = [-0.31, -0.23, -0.15, -0.07]; // +5, -5, AGND, Vout
+      const connectorX = 1.96;
+      const routeX = 1.82;
+      const jPins = [-0.51, -0.37, -0.23, -0.09]; // +5, -5, AGND, Vout
       for (const z of jPins) c.push(...buildLineCloudXZ([connectorX, z], [routeX, z], 0.02, 0.009));
 
       c.push(...buildPolylineCloudXZ([[routeX, jPins[0]], [supplyRightX, jPins[0]], [supplyRightX, plus5Z]]));
       c.push(...buildPolylineCloudXZ([[routeX, jPins[1]], [supplyRightX, jPins[1]], [supplyRightX, minus5Z]]));
 
-      c.push(...buildPolylineCloudXZ([[routeX, jPins[2]], [1.18, jPins[2]], [1.18, -0.08]]));
-      c.push(...buildGroundCloudXZ(1.18, -0.08));
+      c.push(...buildPolylineCloudXZ([[routeX, jPins[2]], [1.54, jPins[2]], [1.54, -0.10]]));
+      c.push(...buildGroundCloudXZ(1.54, -0.10));
 
       c.push(...buildPolylineCloudXZ([
         [routeX, jPins[3]],
-        [0.94, jPins[3]],
-        [0.94, VOUT_Z],
+        [1.56, jPins[3]],
+        [1.56, VOUT_Z],
         [VOUT_X, VOUT_Z],
       ]));
 
@@ -1099,20 +1153,20 @@
       ]),
     ];
 
-    const ASSEMBLY_MORPH_COUNT = 2145;
+    const ASSEMBLY_MORPH_COUNT = 3218;
     const SCHEMATIC_MORPH_CLOUD = resampleCloud(SCHEMATIC_CLOUD, ASSEMBLY_MORPH_COUNT);
     const PCB_MORPH_CLOUD = resampleCloud(PCB_ASSEMBLY_BARE_CLOUD, ASSEMBLY_MORPH_COUNT);
 
     const FIXTURE_FRAME_CLOUDS = [
-      decimate(buildBox([0, -0.19, 0], 1.78, 0.06, 1.28, 14, 3, 12), 3),
-      decimate(buildBox([0, -0.11, -0.63], 1.62, 0.18, 0.08, 12, 5, 2), 2),
-      decimate(buildBox([0, -0.11, 0.63], 1.62, 0.18, 0.08, 12, 5, 2), 2),
-      decimate(buildBox([-0.82, -0.11, 0], 0.08, 0.18, 1.12, 2, 5, 10), 2),
-      decimate(buildBox([0.82, -0.11, 0], 0.08, 0.18, 1.12, 2, 5, 10), 2),
-      decimate(buildBox([-0.82, -0.04, -0.55], 0.12, 0.24, 0.12, 3, 6, 3), 2),
-      decimate(buildBox([0.82, -0.04, -0.55], 0.12, 0.24, 0.12, 3, 6, 3), 2),
-      decimate(buildBox([-0.82, -0.04, 0.55], 0.12, 0.24, 0.12, 3, 6, 3), 2),
-      decimate(buildBox([0.82, -0.04, 0.55], 0.12, 0.24, 0.12, 3, 6, 3), 2),
+      densifyCloud(buildBox([0, -0.19, 0], 1.78, 0.06, 1.28, 24, 5, 20), 2.3),
+      densifyCloud(buildBox([0, -0.11, -0.63], 1.62, 0.18, 0.08, 22, 8, 3), 2.15),
+      densifyCloud(buildBox([0, -0.11, 0.63], 1.62, 0.18, 0.08, 22, 8, 3), 2.15),
+      densifyCloud(buildBox([-0.82, -0.11, 0], 0.08, 0.18, 1.12, 3, 8, 18), 2.15),
+      densifyCloud(buildBox([0.82, -0.11, 0], 0.08, 0.18, 1.12, 3, 8, 18), 2.15),
+      densifyCloud(buildBox([-0.82, -0.04, -0.55], 0.12, 0.24, 0.12, 5, 10, 5), 2.0),
+      densifyCloud(buildBox([0.82, -0.04, -0.55], 0.12, 0.24, 0.12, 5, 10, 5), 2.0),
+      densifyCloud(buildBox([-0.82, -0.04, 0.55], 0.12, 0.24, 0.12, 5, 10, 5), 2.0),
+      densifyCloud(buildBox([0.82, -0.04, 0.55], 0.12, 0.24, 0.12, 5, 10, 5), 2.0),
     ];
 
     const PAD_MARKER_CLOUDS = [];
@@ -1156,6 +1210,116 @@
         });
       }
     }
+
+    function transformCloudToWorld(cloud, frame = null) {
+      const R = frame?.R || IDENTITY;
+      const t = frame?.t || [0, 0, 0];
+      return cloud.map((point) => ({
+        p: vAdd(t, mv(R, point.p)),
+        n: norm(mv(R, point.n)),
+      }));
+    }
+
+    function normalizeTransitionCloud(cloud, targetSpan = 1.82) {
+      if (!cloud.length) return [];
+
+      let minX = Infinity;
+      let minY = Infinity;
+      let minZ = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      let maxZ = -Infinity;
+
+      for (const point of cloud) {
+        minX = Math.min(minX, point.p[0]);
+        minY = Math.min(minY, point.p[1]);
+        minZ = Math.min(minZ, point.p[2]);
+        maxX = Math.max(maxX, point.p[0]);
+        maxY = Math.max(maxY, point.p[1]);
+        maxZ = Math.max(maxZ, point.p[2]);
+      }
+
+      const cx = (minX + maxX) * 0.5;
+      const cy = (minY + maxY) * 0.5;
+      const cz = (minZ + maxZ) * 0.5;
+      const span = Math.max(maxX - minX, maxY - minY, maxZ - minZ, 1e-6);
+      const scale = targetSpan / span;
+
+      return cloud.map((point) => ({
+        p: [
+          (point.p[0] - cx) * scale,
+          (point.p[1] - cy) * scale,
+          (point.p[2] - cz) * scale,
+        ],
+        n: point.n,
+      }));
+    }
+
+    function makeTransitionCloud(cloud) {
+      return resampleCloud(normalizeTransitionCloud(cloud), TRANSITION_MORPH_COUNT);
+    }
+
+    const TRANSITION_MORPH_COUNT = 4800;
+    const TRANSITION_ROBOT_BASE = [-0.044, -0.62, -0.028];
+
+    function buildRobotTransitionCloud(probeIndex = 0) {
+      const clampedIndex = Math.max(0, Math.min(HEART_PROBES.length - 1, probeIndex));
+      const q = solveProbeTipIK(
+        REST_Q.slice(),
+        HEART_PROBES[clampedIndex].p,
+        [0, -1, 0],
+        TRANSITION_ROBOT_BASE,
+        18,
+      );
+      const { frames, flange } = fk(q, TRANSITION_ROBOT_BASE);
+
+      return makeTransitionCloud([
+        ...LINK_POINT_CLOUDS.flatMap((linkCloud, i) => transformCloudToWorld(linkCloud, frames[i])),
+        ...transformCloudToWorld(FLANGE_POINT_CLOUD_DENSE, flange),
+        ...transformCloudToWorld(SCANNER_POINT_CLOUD_DENSE, flange),
+        ...HEART_SURFACE_CLOUD_DENSE,
+        ...HEART_TRAY_CLOUD,
+      ]);
+    }
+
+    function buildBedTransitionCloud(boardY = 0.13, pinTipY = 0.112) {
+      const boardFrame = { R: IDENTITY, t: [0, boardY, 0] };
+      const nails = [];
+
+      for (const nail of NAIL_LAYOUT) {
+        nails.push(
+          ...buildCylinder([nail.x, -0.28, nail.z], [nail.x, pinTipY, nail.z], 0.015, 7, 12, 2),
+          ...buildCylinder([nail.x, pinTipY - 0.012, nail.z], [nail.x, pinTipY + 0.006, nail.z], 0.024, 4, 12, 2),
+        );
+      }
+
+      return makeTransitionCloud([
+        ...transformCloudToWorld(PCB_BOARD_CLOUD, boardFrame),
+        ...PCB_COMPONENT_CLOUDS.flatMap((cloud) => transformCloudToWorld(cloud, boardFrame)),
+        ...PCB_DETAIL_CLOUDS.flatMap((cloud) => transformCloudToWorld(cloud, boardFrame)),
+        ...PAD_MARKER_CLOUDS.flatMap((cloud) => transformCloudToWorld(cloud, boardFrame)),
+        ...FIXTURE_FRAME_CLOUDS.flat(),
+        ...nails,
+      ]);
+    }
+
+    function buildAssemblyTransitionCloud(populated = false) {
+      const cloud = populated
+        ? [
+          ...PCB_ASSEMBLY_BARE_CLOUD,
+          ...PCB_ASSEMBLY_COMPONENT_CLOUDS.flat(),
+        ]
+        : SCHEMATIC_CLOUD;
+      return makeTransitionCloud(cloud);
+    }
+
+    const ROBOT_ENTRY_TRANSITION_CLOUD = buildRobotTransitionCloud(0);
+    const ROBOT_EXIT_TRANSITION_CLOUD = buildRobotTransitionCloud(HEART_PROBES.length - 1);
+    const BED_ENTRY_TRANSITION_CLOUD = buildBedTransitionCloud(0.40, -0.13);
+    const BED_EXIT_TRANSITION_CLOUD = buildBedTransitionCloud(0.13, 0.112);
+    const ASSEMBLY_ENTRY_TRANSITION_CLOUD = buildAssemblyTransitionCloud(false);
+    const ASSEMBLY_EXIT_TRANSITION_CLOUD = buildAssemblyTransitionCloud(true);
+
     const state = {
       width: 0,
       height: 0,
@@ -1176,6 +1340,7 @@
       robotFit: { scale: 0 },
       bedFit: { scale: 0 },
       assemblyFit: { scale: 0 },
+      transitionFit: { scale: 0 },
       currentScene: '',
     };
 
@@ -1196,7 +1361,7 @@
     media.addEventListener?.('change', onMotionChange);
 
     function resize() {
-      const rect = root.getBoundingClientRect();
+      const rect = frameEl.getBoundingClientRect();
       const dpr = Math.min(window.devicePixelRatio || 1, DPR_CAP);
       const width = Math.max(1, Math.round(rect.width * dpr));
       const height = Math.max(1, Math.round(rect.height * dpr));
@@ -1212,6 +1377,7 @@
       state.robotFit.scale = 0;
       state.bedFit.scale = 0;
       state.assemblyFit.scale = 0;
+      state.transitionFit.scale = 0;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
 
@@ -1219,7 +1385,7 @@
       resize();
       render(performance.now() * 0.001, 0);
     });
-    resizeObserver.observe(root);
+    resizeObserver.observe(frameEl);
 
     const intersectionObserver = new IntersectionObserver(
       (entries) => {
@@ -1388,35 +1554,35 @@
         const easedNear = smooth(near);
 
         if (p.kind === 'flange' || p.kind === 'scanner') {
-          p.r = (0.32 + easedNear * 0.68) * 1.1;
+          p.r = 0.24 + easedNear * 0.42;
         } else if (p.kind === 'base') {
-          p.r = (0.4 + easedNear * 0.9) * 1.12;
+          p.r = 0.27 + easedNear * 0.48;
         } else if (p.kind === 'registration') {
-          p.r = 0.62 + easedNear * 1.0;
+          p.r = 0.42 + easedNear * 0.70;
         } else if (p.kind === 'heart') {
-          p.r = 0.38 + easedNear * 0.78;
+          p.r = 0.25 + easedNear * 0.46;
         } else if (p.kind === 'pin-active') {
-          p.r = 0.56 + easedNear * 1.08;
+          p.r = 0.38 + easedNear * 0.68;
         } else if (p.kind === 'pin') {
-          p.r = 0.46 + easedNear * 0.9;
+          p.r = 0.31 + easedNear * 0.56;
         } else if (p.kind === 'fixture') {
-          p.r = 0.3 + easedNear * 0.64;
+          p.r = 0.22 + easedNear * 0.40;
         } else if (p.kind === 'pcb-detail') {
-          p.r = 0.32 + easedNear * 0.68;
+          p.r = 0.23 + easedNear * 0.42;
         } else if (p.kind === 'pcb') {
-          p.r = 0.35 + easedNear * 0.76;
+          p.r = 0.24 + easedNear * 0.46;
         } else {
-          p.r = (0.34 + easedNear * 0.82) * 1.1;
+          p.r = 0.25 + easedNear * 0.48;
         }
 
         let alpha;
-        if (p.kind === 'base') alpha = 0.08 + p.a * 0.72;
+        if (p.kind === 'base') alpha = 0.18 + p.a * 0.78;
         else if (p.kind === 'registration') alpha = 0.22 + p.a * 0.76;
-        else if (p.kind === 'heart') alpha = 0.06 + p.a * 0.64;
+        else if (p.kind === 'heart') alpha = 0.14 + p.a * 0.72;
         else if (p.kind === 'pin-active') alpha = 0.16 + p.a * 0.84;
-        else if (p.kind === 'pin') alpha = 0.085 + p.a * 0.74;
-        else if (p.kind === 'pcb-detail') alpha = 0.05 + p.a * 0.6;
-        else alpha = 0.045 + p.a * 0.62;
+        else if (p.kind === 'pin') alpha = 0.16 + p.a * 0.78;
+        else if (p.kind === 'pcb-detail') alpha = 0.14 + p.a * 0.72;
+        else alpha = 0.13 + p.a * 0.72;
         alpha = clamp(alpha, 0, 1);
 
         const depthIndex = Math.min(
@@ -1457,6 +1623,72 @@
           }
         }
       }
+    }
+
+
+
+    function updateCaption(primaryText, secondaryText = '', blend = 0) {
+      if (!captionPrimary || !captionSecondary) return;
+      captionPrimary.textContent = primaryText;
+      captionSecondary.textContent = secondaryText || primaryText;
+      const t = clamp(blend);
+      captionPrimary.style.opacity = `${1 - t}`;
+      captionSecondary.style.opacity = secondaryText ? `${t}` : '0';
+    }
+
+
+    function getTransitionCamera(globalTime) {
+      return makeCamera(
+        [
+          1.52 + 0.025 * Math.cos(globalTime * 0.18),
+          1.14 + 0.02 * Math.sin(globalTime * 0.16 + 0.5),
+          1.98 + 0.03 * Math.sin(globalTime * 0.14 + 1.1),
+        ],
+        [0, 0.02, 0],
+      );
+    }
+
+
+    function drawMorphTransition(mix, fromCloud, toCloud, globalTime) {
+      const t = easeInOut(clamp(mix));
+      const lightDir = norm([0.58, 1.0, 0.46]);
+      const camera = getTransitionCamera(globalTime);
+
+      const morphCloud = [];
+      const count = Math.min(fromCloud.length, toCloud.length);
+      for (let i = 0; i < count; i++) {
+        const a = fromCloud[i];
+        const b = toCloud[i];
+        morphCloud.push({
+          p: [
+            lerp(a.p[0], b.p[0], t),
+            lerp(a.p[1], b.p[1], t),
+            lerp(a.p[2], b.p[2], t),
+          ],
+          n: norm(vLerp(a.n, b.n, t)),
+        });
+      }
+
+      const dots = [];
+      const sourceHold = clamp((0.28 - t) / 0.28);
+      const destHold = clamp((t - 0.60) / 0.40);
+      pushCloud(dots, morphCloud, null, camera, lightDir, 'pcb', 0.84 + 0.10 * Math.sin(t * PI));
+      if (sourceHold > 0) {
+        pushCloud(dots, fromCloud, null, camera, lightDir, 'pcb-detail', 0.34 + sourceHold * 0.42);
+      }
+      if (destHold > 0) {
+        pushCloud(dots, toCloud, null, camera, lightDir, 'pcb-detail', 0.22 + destHold * 0.78);
+      }
+      const anchor = project([0, 0, 0], camera);
+      fitAnchoredDots(dots, anchor, state.transitionFit, {
+        screenX: 0.53,
+        screenY: 0.57,
+        left: 0.05,
+        right: 0.975,
+        top: 0.05,
+        bottom: 0.955,
+      });
+      sizeAndDrawDots(dots);
     }
 
     function getHeartSceneCamera(localTime, duration, globalTime, motion) {
@@ -1864,8 +2096,8 @@
       for (const nail of NAIL_LAYOUT) {
         const activity = nailActivityLevel(nail, activityTime);
         const active = activity > 0.24;
-        const shaftCloud = buildCylinder([nail.x, -0.28, nail.z], [nail.x, pinTipY, nail.z], 0.015, 6, 10, 2);
-        const headCloud = buildCylinder([nail.x, pinTipY - 0.012, nail.z], [nail.x, pinTipY + 0.006, nail.z], 0.024, 3, 10, 2);
+        const shaftCloud = buildCylinder([nail.x, -0.28, nail.z], [nail.x, pinTipY, nail.z], 0.015, 9, 14, 2);
+        const headCloud = buildCylinder([nail.x, pinTipY - 0.012, nail.z], [nail.x, pinTipY + 0.006, nail.z], 0.024, 5, 14, 2);
         const nailCloud = [
           ...decimate(shaftCloud, active ? 1 : 2, nail.seq % 2),
           ...decimate(headCloud, 1),
@@ -1991,14 +2223,34 @@
       sizeAndDrawDots(dots);
     }
 
+    function withCanvasAlpha(alpha, drawFn) {
+      ctx.save();
+      ctx.globalAlpha = clamp(alpha);
+      drawFn();
+      ctx.restore();
+    }
+
+    function transitionSceneFade(blend) {
+      // Only cross-dissolve near the end of the morph. This lets the geometry
+      // finish transforming first, then hands off smoothly to the real scene
+      // in its own native camera/scale without a positional snap.
+      return smooth(clamp((blend - 0.72) / 0.28));
+    }
+
     function render(timeSeconds, deltaSeconds = 0) {
       // ResizeObserver owns all layout measurements. No getBoundingClientRect()
       // or canvas resize work occurs in the animation loop.
       ctx.clearRect(0, 0, state.width, state.height);
 
       const loopTime = state.reducedMotion ? 0 : (timeSeconds % LOOP_DURATION);
+      const robotEnd = ROBOT_SCENE_DURATION;
+      const robotToBedEnd = robotEnd + SCENE_TRANSITION_DURATION;
+      const bedEnd = robotToBedEnd + BED_SCENE_DURATION;
+      const bedToAssemblyEnd = bedEnd + SCENE_TRANSITION_DURATION;
+      const assemblyEnd = bedToAssemblyEnd + ASSEMBLY_SCENE_DURATION;
 
-      if (loopTime < ROBOT_SCENE_DURATION) {
+      if (loopTime < robotEnd) {
+        updateCaption('Robotic surface registration');
         setScene('robot');
         drawHeartRegistrationScene(
           loopTime,
@@ -2006,20 +2258,102 @@
           timeSeconds,
           deltaSeconds,
         );
-      } else if (loopTime < ROBOT_SCENE_DURATION + BED_SCENE_DURATION) {
+      } else if (loopTime < robotToBedEnd) {
+        const blend = (loopTime - robotEnd) / SCENE_TRANSITION_DURATION;
+        const handoff = transitionSceneFade(blend);
+
+        updateCaption(
+          'Robotic surface registration',
+          'Bed of nails for automated test',
+          blend,
+        );
+
+        withCanvasAlpha(1 - handoff, () => {
+          drawMorphTransition(
+            blend,
+            ROBOT_EXIT_TRANSITION_CLOUD,
+            BED_ENTRY_TRANSITION_CLOUD,
+            timeSeconds,
+          );
+        });
+
+        if (handoff > 0) {
+          setScene('bed');
+          withCanvasAlpha(handoff, () => {
+            drawBedOfNailsScene(0, BED_SCENE_DURATION, timeSeconds);
+          });
+        }
+      } else if (loopTime < bedEnd) {
+        updateCaption('Bed of nails for automated test');
         setScene('bed');
         drawBedOfNailsScene(
-          loopTime - ROBOT_SCENE_DURATION,
+          loopTime - robotToBedEnd,
           BED_SCENE_DURATION,
           timeSeconds,
         );
-      } else {
+      } else if (loopTime < bedToAssemblyEnd) {
+        const blend = (loopTime - bedEnd) / SCENE_TRANSITION_DURATION;
+        const handoff = transitionSceneFade(blend);
+
+        updateCaption(
+          'Bed of nails for automated test',
+          'PCB design and fabrication',
+          blend,
+        );
+
+        withCanvasAlpha(1 - handoff, () => {
+          drawMorphTransition(
+            blend,
+            BED_EXIT_TRANSITION_CLOUD,
+            ASSEMBLY_ENTRY_TRANSITION_CLOUD,
+            timeSeconds,
+          );
+        });
+
+        if (handoff > 0) {
+          setScene('assembly');
+          withCanvasAlpha(handoff, () => {
+            drawAssemblyScene(0, ASSEMBLY_SCENE_DURATION, timeSeconds);
+          });
+        }
+      } else if (loopTime < assemblyEnd) {
+        updateCaption('PCB design and fabrication');
         setScene('assembly');
         drawAssemblyScene(
-          loopTime - ROBOT_SCENE_DURATION - BED_SCENE_DURATION,
+          loopTime - bedToAssemblyEnd,
           ASSEMBLY_SCENE_DURATION,
           timeSeconds,
         );
+      } else {
+        const blend = (loopTime - assemblyEnd) / SCENE_TRANSITION_DURATION;
+        const handoff = transitionSceneFade(blend);
+
+        updateCaption(
+          'PCB design and fabrication',
+          'Robotic surface registration',
+          blend,
+        );
+
+        withCanvasAlpha(1 - handoff, () => {
+          drawMorphTransition(
+            blend,
+            ASSEMBLY_EXIT_TRANSITION_CLOUD,
+            ROBOT_ENTRY_TRANSITION_CLOUD,
+            timeSeconds,
+          );
+        });
+
+        if (handoff > 0) {
+          setScene('robot');
+          withCanvasAlpha(handoff, () => {
+            drawHeartRegistrationScene(
+              0,
+              ROBOT_SCENE_DURATION,
+              timeSeconds,
+              deltaSeconds,
+            );
+          });
+        }
       }
     }
 
